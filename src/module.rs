@@ -22,7 +22,9 @@ pub trait Module {
             self.tick();
             *item = self.behaviour(*item);
 
-            if cfg!(debug_assertions) {
+
+            #[cfg(debug_osc="true")]
+            {
                 println!("[ {} ] {}", count, item);
             }
         }

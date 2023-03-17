@@ -1,9 +1,9 @@
 // This files contains some custom stuff for initializing the back-end
 
-use cpal::traits::{DeviceTrait};
-use cpal::{Device, SupportedStreamConfig, SampleRate, SampleFormat, SupportedStreamConfigRange};
+use cpal::traits::DeviceTrait;
 #[cfg(debug_assertions)]
-use cpal::{SupportedOutputConfigs};
+use cpal::SupportedOutputConfigs;
+use cpal::{Device, SampleFormat, SampleRate, SupportedStreamConfig, SupportedStreamConfigRange};
 
 /// Looks up for a supported config with a specific sample format.
 ///

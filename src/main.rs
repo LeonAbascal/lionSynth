@@ -1,15 +1,15 @@
+mod back_end;
 mod generic_modules;
 mod module;
 mod oscillator_math;
-mod back_end;
 
-use std::f32::consts::PI;
-use cpal::{Device, FromSample, Sample, SampleFormat, SampleRate, StreamConfig};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use cpal::{Device, FromSample, Sample, SampleFormat, SampleRate, StreamConfig};
+use std::f32::consts::PI;
 
-use back_end::{Channels, get_preferred_config};
-use module::Module;
+use back_end::{get_preferred_config, Channels};
 use generic_modules::{OscDebug, PassTrough};
+use module::Module;
 
 #[allow(dead_code)]
 #[cfg(debug_assertions)]
@@ -18,7 +18,6 @@ fn print_type_of<T>(_: &T) {
 }
 
 fn main() -> Result<(), anyhow::Error> {
-
     // LAUNCH LITTLE TEST
     test();
 
@@ -73,8 +72,8 @@ fn main() -> Result<(), anyhow::Error> {
 
 // from cpal examples beep.rs
 fn write_data<T>(output: &mut [T], channels: usize, next_sample: &mut dyn FnMut() -> f32)
-    where
-        T: Sample + FromSample<f32>,
+where
+    T: Sample + FromSample<f32>,
 {
     for frame in output.chunks_mut(channels) {
         let value: T = T::from_sample(next_sample());
@@ -92,8 +91,7 @@ fn write_silence<T: Sample>(data: &mut [T], _: &cpal::OutputCallbackInfo) {
 }
 
 fn test() {
-    let mut buffer: Vec<f32> = Vec::with_capacity(20); // 20 samples
-    buffer.resize(20, 0.0);
+    let mut buffer: Vec<f32> = vec![0.0; 44100];
 
     println!("\nDEBUG OSC--");
     let mut module2 = OscDebug::new(44100);

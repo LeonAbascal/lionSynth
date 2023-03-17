@@ -51,14 +51,17 @@ impl Module for Oscillator {
         let freq: f32 = 440.0; // TODO: parameterizable
         let amplitude: f32 = 1.0; // TODO: parameterizable gain
         let phase: f32 = 0.0;
-        (self.clock * freq * 2.0 * PI * amplitude + phase / self.sample_rate).sin() // TODO: parameterizable wave
+        (self.clock * freq * 2.0 * PI * amplitude + phase / self.sample_rate).sin()
+        // TODO: parameterizable wave
     }
 
     fn tick(&mut self) {
         self.clock = (self.clock + 1.0) % self.sample_rate;
     }
 
-    fn get_clock(&self) -> f32 { self.clock }
+    fn get_clock(&self) -> f32 {
+        self.clock
+    }
 }
 
 #[cfg(debug_assertions)]
