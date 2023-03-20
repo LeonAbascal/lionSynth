@@ -16,6 +16,9 @@ pub struct OscDebug {
 pub struct Oscillator {
     clock: f32,
     sample_rate: f32,
+    frequency: f32,
+    amplitude: f32,
+    phase: f32,
 }
 
 // IMPLEMENTATIONS
@@ -48,11 +51,9 @@ impl Module for OscDebug {
 
 impl Module for Oscillator {
     fn behaviour(&self, _in_data: f32) -> f32 {
-        let freq: f32 = 440.0; // TODO: parameterizable
-        let amplitude: f32 = 1.0; // TODO: parameterizable gain
-        let phase: f32 = 0.0;
-        (self.clock * freq * 2.0 * PI * amplitude + phase / self.sample_rate).sin()
-        // TODO: parameterizable wave
+        (self.clock * self.frequency * 2.0 * PI * self.amplitude + self.phase / self.sample_rate)
+            .sin()
+        // TODO: parameterizable wave, amp, freq, phase
     }
 
     fn tick(&mut self) {
@@ -88,6 +89,29 @@ impl Oscillator {
         Self {
             clock: 0.0,
             sample_rate: sample_rate as f32,
+            frequency: 440.0,
+            amplitude: 1.0,
+            phase: 0.0,
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::SAMPLE_RATE;
+
+    #[test]
+    fn test_pass_through() {
+        let mut tested_module = PassTrough::new();
+        let mut osc = OscDebug::new(SAMPLE_RATE);
+        let mut original_buffer: Vec<f32> = vec![0.0; 20];
+
+        // MODIFY THE BUFFER
+        osc.fill_buffer(&mut original_buffer);
+        let mut modified_buffer = original_buffer.clone();
+
+        tested_module.fill_buffer(&mut modified_buffer);
+        assert_eq!(original_buffer, modified_buffer);
     }
 }

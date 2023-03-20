@@ -22,8 +22,7 @@ pub trait Module {
             self.tick();
             *item = self.behaviour(*item);
 
-
-            #[cfg(debug_osc="true")]
+            #[cfg(feature = "verbose_modules")]
             {
                 println!("[ {} ] {}", count, item);
             }

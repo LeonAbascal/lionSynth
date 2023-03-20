@@ -54,6 +54,14 @@ fn print_all_configs(device: &Device) {
     }
 }
 
+/// Query every configuration meeting certain conditions.
+/// # Arguments
+/// * `device` - a `cpal::Device` from which get the configuration
+/// * `channel_amt` - amount of channels we want available. Will get from the amount onwards.
+/// * `sample_format` - the format in which data is going to be handled (cpal::SampleFormat)
+///
+/// # Returns
+/// A vector containing every cpal::SupportedStreamConfigRange matching the requirements
 pub fn query_configurations(
     device: &Device,
     channel_amt: Option<Channels>,
@@ -94,6 +102,14 @@ pub fn query_configurations(
     supported_configs
 }
 
+/// Queries the first configuration found meeting certain conditions.
+/// # Arguments
+/// * `device` - a `cpal::Device` from which get the configuration
+/// * `channel_amt` - amount of channels we want available. Will default to the lowest possible one
+/// * `sample_format` - the format in which data is going to be handled (cpal::SampleFormat)
+///
+/// # Returns
+/// A cpal::SupportedStreamConfigRange matching the requirements.
 pub fn query_config(
     device: &Device,
     channel_amt: Option<Channels>,

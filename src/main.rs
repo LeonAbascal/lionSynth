@@ -5,11 +5,12 @@ mod oscillator_math;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{Device, FromSample, Sample, SampleFormat, SampleRate, StreamConfig};
-use std::f32::consts::PI;
 
 use back_end::{get_preferred_config, Channels};
 use generic_modules::{OscDebug, PassTrough};
 use module::Module;
+
+const SAMPLE_RATE: i32 = 44100;
 
 #[allow(dead_code)]
 #[cfg(debug_assertions)]
@@ -18,8 +19,9 @@ fn print_type_of<T>(_: &T) {
 }
 
 fn main() -> Result<(), anyhow::Error> {
-    // LAUNCH LITTLE TEST
-    test();
+    // FILL
+    let signal_duration: i32 = 1000; // milliseconds
+    let mut test_buffer = module_chain(signal_duration * SAMPLE_RATE / 1000);
 
     // get default host
     let host = cpal::default_host();
@@ -33,23 +35,31 @@ fn main() -> Result<(), anyhow::Error> {
     let supported_config = get_preferred_config(
         &device,
         Some(SampleFormat::F32),
-        Some(SampleRate(44100)),
+        Some(SampleRate(SAMPLE_RATE as u32)),
         Some(Channels::Stereo),
     );
 
     // open stream
     let config: StreamConfig = supported_config.into();
 
-    let sample_rate = config.sample_rate.0 as f32;
     let channels = config.channels as usize;
 
+    /* TODO: real time processing
+    let sample_rate = config.sample_rate.0 as f32;
     // A closure to generate a sin wave
     let mut sample_clock = 0f32;
     let frequency = 440.0;
+
+
     let mut next_value = move || {
+        // CALL FIRST MODULE
         sample_clock = (sample_clock + 1.0) % sample_rate;
         (sample_clock * frequency * 2.0 * PI / sample_rate).sin()
     };
+     */
+
+    // If there is no more values in the buffer, silence
+    let mut next_value = move || test_buffer.pop().unwrap_or(0.0);
 
     let err_fn = |err| eprintln!("an error occurred on stream: {}", err);
 
@@ -65,7 +75,7 @@ fn main() -> Result<(), anyhow::Error> {
     stream.play()?;
 
     // duration of the tone
-    std::thread::sleep(std::time::Duration::from_millis(1000));
+    std::thread::sleep(std::time::Duration::from_millis(signal_duration as u64));
 
     Ok(())
 }
@@ -90,16 +100,20 @@ fn write_silence<T: Sample>(data: &mut [T], _: &cpal::OutputCallbackInfo) {
     }
 }
 
-fn test() {
-    let mut buffer: Vec<f32> = vec![0.0; 44100];
+fn module_chain(buffer_length: i32) -> Vec<f32> {
+    // Buffer initialization (1 sec = 44100 samples)
+    let mut buffer: Vec<f32> = vec![0.0; buffer_length as usize];
 
+    #[cfg(feature = "verbose_modules")]
     println!("\nDEBUG OSC--");
+
     let mut module2 = OscDebug::new(44100);
     module2.fill_buffer(&mut buffer);
 
+    #[cfg(feature = "verbose_modules")]
     println!("\nPASS THROUGH--");
     let mut module = PassTrough::new();
     module.fill_buffer(&mut buffer);
 
-    println!();
+    buffer
 }
