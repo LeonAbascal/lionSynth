@@ -1,13 +1,15 @@
 mod back_end;
-mod generic_modules;
+mod bundled_modules;
 mod module;
 mod oscillator_math;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{Device, FromSample, Sample, SampleFormat, SampleRate, StreamConfig};
 
+// MY STUFF
 use back_end::{get_preferred_config, Channels};
-use generic_modules::{OscDebug, PassTrough};
+use bundled_modules::debug::{OscDebug, PassTrough};
+use bundled_modules::Oscillator;
 use module::Module;
 
 const SAMPLE_RATE: i32 = 44100;
