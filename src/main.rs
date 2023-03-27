@@ -1,7 +1,6 @@
 mod back_end;
 mod bundled_modules;
 mod module;
-mod oscillator_math;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{Device, FromSample, Sample, SampleFormat, SampleRate, StreamConfig};
