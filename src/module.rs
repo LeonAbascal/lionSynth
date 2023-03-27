@@ -12,7 +12,7 @@ pub struct LinkerModule {
 ///
 /// # How it works
 /// Each module is able to receive and retrieve a buffer of any size. Data (samples) is represented
-/// in a f32 format, and the module will modify it. For such, it will be calling the [behaviour]
+/// in a f32 format, and the module will modify it. For such, it will be calling the `behaviour()`
 /// method, which is the only one you need to override. I do not recommend overriding the rest
 /// of the methods.
 ///
