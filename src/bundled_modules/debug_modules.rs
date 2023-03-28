@@ -1,18 +1,29 @@
-use crate::module::Module;
+use crate::module::{Module, Parameter};
 use std::f32::consts::PI;
 
 // MODULES
-pub struct PassTrough {}
+pub struct PassTrough {
+    parameters: Vec<Parameter>,
+}
 
 pub struct OscDebug {
     clock: f32,
     sample_rate: f32,
+    parameters: Vec<Parameter>,
 }
 
 // IMPLEMENTATIONS
 impl Module for PassTrough {
     fn behaviour(&self, in_sample: f32) -> f32 {
         in_sample // clean data
+    }
+
+    fn get_parameter_list_mutable(&mut self) -> &mut Vec<Parameter> {
+        &mut self.parameters
+    }
+
+    fn get_parameter_list(&self) -> &Vec<Parameter> {
+        &self.parameters
     }
 
     fn tick(&mut self) {}
@@ -27,6 +38,14 @@ impl Module for OscDebug {
         (self.clock * freq * 2.0 * PI / self.sample_rate).sin()
     }
 
+    fn get_parameter_list_mutable(&mut self) -> &mut Vec<Parameter> {
+        &mut self.parameters
+    }
+
+    fn get_parameter_list(&self) -> &Vec<Parameter> {
+        &self.parameters
+    }
+
     fn tick(&mut self) {
         self.clock = (self.clock + 1.0) % self.sample_rate;
     }
@@ -38,7 +57,7 @@ impl Module for OscDebug {
 // CONSTRUCTORS
 impl PassTrough {
     pub fn new() -> Self {
-        Self {}
+        Self { parameters: vec![] }
     }
 }
 
@@ -47,6 +66,7 @@ impl OscDebug {
         Self {
             clock: 0.0,
             sample_rate: sample_rate as f32,
+            parameters: vec![],
         }
     }
 }

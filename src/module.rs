@@ -55,6 +55,39 @@ pub trait Module {
     /// A generated or modified sample
     fn behaviour(&self, in_data: f32) -> f32;
 
+    /// Adds a parameter to the list of parameters. If the tag is already in the list,
+    /// the operation gets rejected.
+    fn add_parameter(&mut self, in_parameter: Parameter) -> Result<(), String> {
+        let parameters = self.get_parameter_list_mutable();
+
+        let tag = &in_parameter.tag;
+        let res = parameters.into_iter().find(|p| &p.tag == tag);
+
+        if res.is_none() {
+            parameters.push(in_parameter);
+        } else {
+            return Err("Parameter already exists".to_string());
+        }
+
+        Ok(())
+    }
+
+    /// Retrieves a parameter given its tag, if exists.
+    fn get_parameter_mutable(&mut self, tag: &str) -> Option<&mut Parameter> {
+        self.get_parameter_list_mutable()
+            .into_iter()
+            .find(|p| p.tag == tag)
+    }
+
+    fn get_parameter(&self, tag: &str) -> Option<&Parameter> {
+        self.get_parameter_list().into_iter().find(|p| p.tag == tag)
+    }
+
+    /// Gets all parameters in the list. Used to enforce the presence of a parameter
+    /// list in every module struct.
+    fn get_parameter_list_mutable(&mut self) -> &mut Vec<Parameter>;
+    fn get_parameter_list(&self) -> &Vec<Parameter>;
+
     /// Will define how the clock goes forward. Useful for timed operations
     fn tick(&mut self); // TODO: consider making the tick common with an associated function (class method) or a sync-er structure in the main flow
     fn get_clock(&self) -> f32; // TODO: remove? tick already enforces the clock in the struct
@@ -87,19 +120,22 @@ pub struct Parameter {
 
 /// A parameter of a module. To create one, please refer to [ParameterFactory].
 impl Parameter {
-    fn new(max: f32, min: f32, step: f32, default: f32, current: f32, tag: String) -> Parameter {
-        Self {
-            max,
-            min,
-            step,
-            current,
-            default,
-            tag,
+    pub fn get_tag(&self) -> &String {
+        &self.tag
+    }
+    pub fn get_value(&self) -> f32 {
+        self.current
+    }
+
+    /// Sets the value of a parameter
+    pub fn set(&mut self, value: f32) {
+        if value < self.max || value > self.min {
+            self.current = value;
         }
     }
 
     /// Increases the value of the parameter upon maximum.
-    fn inc(&mut self) {
+    pub fn inc(&mut self) {
         // if value exceeds the maximum, keep the max value.
         if self.current + self.step > self.max {
             self.current = self.max;
@@ -111,7 +147,7 @@ impl Parameter {
     }
 
     /// Decreases the value of the parameter upon minimum.
-    fn dec(&mut self) {
+    pub fn dec(&mut self) {
         // if value exceeds the minimum, keep the min value.
         if self.current - self.step < self.min {
             self.current = self.min;

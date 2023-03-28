@@ -1,8 +1,8 @@
 mod oscillator;
-pub use crate::bundled_modules::oscillator::Oscillator;
+pub use crate::bundled_modules::oscillator::{Oscillator, OscillatorFactory};
 
 pub mod prelude {
-    pub use crate::bundled_modules::oscillator::Oscillator;
+    pub use crate::bundled_modules::oscillator::{Oscillator, OscillatorFactory};
 }
 
 mod debug_modules;

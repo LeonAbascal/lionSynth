@@ -14,7 +14,7 @@ use simplelog::*;
 // MY STUFF
 use back_end::{get_preferred_config, Channels};
 use bundled_modules::debug::{OscDebug, PassTrough};
-use bundled_modules::Oscillator;
+use bundled_modules::OscillatorFactory;
 use module::Module;
 
 const SAMPLE_RATE: i32 = 44100;
@@ -101,7 +101,7 @@ fn main() -> Result<(), anyhow::Error> {
 
     logger.done();
 
-    info!("<green><tick></> <b>Program finished <green>successfully</>");
+    info!("<green><tick></> <b>Program finished <green>successfully</><b>.</>");
     Ok(())
 }
 
@@ -129,11 +129,13 @@ fn module_chain(buffer_length: i32) -> Vec<f32> {
     // Buffer initialization (1 sec = 44100 samples)
     let mut buffer: Vec<f32> = vec![0.0; buffer_length as usize];
 
-    #[cfg(feature = "verbose_modules")]
-    info!("DEBUG OSC--");
+    let mut oscillator = OscillatorFactory::new().build().unwrap();
 
-    let mut module2 = OscDebug::new(44100);
-    module2.fill_buffer(&mut buffer);
+    oscillator.set_amplitude(0.8);
+    oscillator.set_frequency(660.0);
+    oscillator.set_phase(1.0);
+
+    oscillator.fill_buffer(&mut buffer);
 
     #[cfg(feature = "verbose_modules")]
     info!("PASS THROUGH--");
