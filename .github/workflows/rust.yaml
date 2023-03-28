@@ -17,7 +17,7 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - name: Audio Dependency install (ALSA)
-      run: sudo apt-get -y install alsa_tools
+      run: sudo apt-get -y install alsa-tools
     - name: Build
       run: cargo build --verbose
     - name: Run tests
