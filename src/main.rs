@@ -130,9 +130,6 @@ fn module_chain(buffer_length: i32) -> Vec<f32> {
     let mut buffer: Vec<f32> = vec![0.0; buffer_length as usize];
 
     #[cfg(feature = "verbose_modules")]
-    warn!("<red><b>Verbose modules</> is a very <red><b>slow</> feature. I do only recommend using it on a few circumstances.");
-
-    #[cfg(feature = "verbose_modules")]
     info!("DEBUG OSC--");
 
     let mut module2 = OscDebug::new(44100);
@@ -143,5 +140,11 @@ fn module_chain(buffer_length: i32) -> Vec<f32> {
     let mut module = PassTrough::new();
     module.fill_buffer(&mut buffer);
 
+    #[cfg(feature = "verbose_modules")]
+    {
+        println!();
+        warn!("<blue><b>Verbose modules</> is a very <red><b>slow</> feature. I do only recommend using it with <blue><b>small</> buffers.");
+        println!();
+    }
     buffer
 }
