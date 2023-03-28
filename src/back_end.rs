@@ -4,7 +4,7 @@ use cpal::traits::DeviceTrait;
 #[cfg(debug_assertions)]
 use cpal::SupportedOutputConfigs;
 use cpal::{Device, SampleFormat, SampleRate, SupportedStreamConfig, SupportedStreamConfigRange};
-
+use simplelog::info;
 /// Looks up for a supported config with a specific sample format.
 ///
 /// # Arguments
@@ -25,15 +25,14 @@ pub fn get_preferred_config(
     let config = query_config(device, channel_amt, sample_format, sample_rate);
 
     if cfg!(debug_assertions) {
-        println!(
-            "PREFERRED CONFIG for {}",
+        info!(
+            "<b>PREFERRED CONFIG for <red>{}</>",
             device.name().expect("Couldn't read device name")
         );
-        println!(" |_ channels: {}", config.channels());
-        println!(" |_ sample_rate: {}", config.sample_rate().0);
-        println!(" |_ buffer size: {:?}", config.buffer_size());
-        println!(" |_ sample format: {:?}", config.sample_format());
-        println!();
+        info!(" |_ channels: {}", config.channels());
+        info!(" |_ sample_rate: {}", config.sample_rate().0);
+        info!(" |_ buffer size: {:?}", config.buffer_size());
+        info!(" |_ sample format: {:?}\n", config.sample_format());
     }
 
     config
@@ -68,10 +67,12 @@ pub fn query_configurations(
     sample_format: Option<SampleFormat>,
 ) -> Vec<SupportedStreamConfigRange> {
     if cfg!(debug_assertions) {
-        println!("QUERYING {:?} device UNDER", device.name().unwrap());
-        println!("  |_ channel amount: {:?}", channel_amt);
-        println!("  |_ sample format: {:?}", sample_format);
-        println!();
+        info!(
+            "<b>QUERYING <red>{:?} device</><b> UNDER</>",
+            device.name().unwrap()
+        );
+        info!("  |_ channel amount: {:?}", channel_amt);
+        info!("  |_ sample format: {:?}\n", sample_format);
     }
     let supported_configs = device
         .supported_output_configs()
@@ -91,10 +92,10 @@ pub fn query_configurations(
 
     // RESULT PRINTS
     if cfg!(debug_assertions) {
-        println!("CONFIGURATION MATCHES");
+        info!("<b>CONFIGURATION MATCH LIST</>");
         let configs = supported_configs.clone();
         for item in configs {
-            println!("  |_ {:?}", item);
+            info!("  |_ {:?}", item);
         }
         println!();
     }

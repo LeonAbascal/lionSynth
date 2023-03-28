@@ -1,3 +1,5 @@
+use simplelog::info;
+
 /// A **linker module** is a module able to connect into another. An example of linker module
 /// would be an effect module or an [ADSR](https://en.wikipedia.org/wiki/Envelope_(music)) module.
 /// An example of **not** linker module would be an generator module, which does not use any
@@ -40,7 +42,7 @@ pub trait Module {
             #[cfg(feature = "verbose_modules")]
             {
                 count = (count + 1) % 10;
-                println!("[ {} ] {}", count, item);
+                info!("<b>[ {} ]</> {}", count, item);
             }
         }
     }
@@ -83,7 +85,7 @@ pub struct Parameter {
     tag: String,
 }
 
-/// A parameter of a module. To create one, please refer to [ParameterFactory]
+/// A parameter of a module. To create one, please refer to [ParameterFactory].
 impl Parameter {
     fn new(max: f32, min: f32, step: f32, default: f32, current: f32, tag: String) -> Parameter {
         Self {
@@ -199,9 +201,19 @@ impl ParameterFactory {
 #[cfg(test)]
 mod parameter_factory_tests {
     use crate::module::{Parameter, ParameterFactory};
+    use log::info;
+    use simplelog::__private::paris::Logger;
+
+    fn get_logger() -> Logger<'static> {
+        Logger::new()
+    }
 
     #[test]
     fn test_empty() {
+        let mut logger = get_logger();
+
+        logger.info("<b>Running test for parameter factory with no arguments</>");
+
         let tested_param = ParameterFactory::new(String::from("test")).build().unwrap();
         let testing_param = Parameter {
             max: 1.0,
@@ -216,10 +228,15 @@ mod parameter_factory_tests {
             tested_param, testing_param,
             "Empty constructor for Parameter Factory failed"
         );
+
+        logger.success("<b>Test pass</>");
     }
 
     #[test]
     fn test_with_all_args() {
+        let mut logger = get_logger();
+        logger.info("<b>Running test for parameter factory with all arguments</>");
+
         let tested_param = ParameterFactory::new(String::from("test"))
             .with_max(2.0)
             .with_min(1.0)
@@ -240,7 +257,9 @@ mod parameter_factory_tests {
         assert_eq!(
             tested_param, testing_param,
             "Constructor with all arguments for Parameter Factory failed"
-        )
+        );
+
+        logger.success("<b>Test pass</>");
     }
 
     #[test]

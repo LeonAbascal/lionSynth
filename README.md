@@ -3,7 +3,9 @@ Work in progress
 
 ### Dependencies:
 * Linux: [ALSA](http://www.escomposlinux.org/lfs-es/blfs-es-5.1/multimedia/alsa-tools.html)
-  * **Ubuntu** `sudo apt install alsa_tools`
+  * **Ubuntu**: `sudo apt install alsa_tools`
+  * **Other**: not tested
+* Windows: running ok
 
 ## Debug options
 Here you will find some debug option that can be used to display useful information. As they
@@ -23,3 +25,9 @@ Makes the modules output their value on each iteration. I only recommend using t
 only on early debugging with a small set of samples generated, as output can get huge.
 
 `cargo run --features verbose_modules`
+
+## Testing
+Some logging has been added to the tests. To display (although not as beautifully as it could,
+thanks Rust) we can use the following option when running the tests:
+
+`cargo test -- --nocapture`

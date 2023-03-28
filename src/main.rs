@@ -4,6 +4,12 @@ mod module;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{Device, FromSample, Sample, SampleFormat, SampleRate, StreamConfig};
+use std::thread::sleep;
+use std::time::Duration;
+
+// DEBUGGING, LOGGING
+use simplelog::__private::paris::Logger;
+use simplelog::*;
 
 // MY STUFF
 use back_end::{get_preferred_config, Channels};
@@ -20,7 +26,18 @@ fn print_type_of<T>(_: &T) {
 }
 
 fn main() -> Result<(), anyhow::Error> {
-    // FILL
+    // LOGGER INIT
+    TermLogger::init(
+        simplelog::LevelFilter::Debug,
+        simplelog::Config::default(),
+        simplelog::TerminalMode::Mixed,
+        simplelog::ColorChoice::Auto,
+    )
+    .expect("Failed to start simplelog");
+    let mut logger = Logger::new();
+
+    // FILL BUFFER
+    info!("<b>Running <blue>demo program</>");
     let signal_duration: i32 = 1000; // milliseconds
     let mut test_buffer = module_chain(signal_duration * SAMPLE_RATE / 1000);
 
@@ -73,11 +90,18 @@ fn main() -> Result<(), anyhow::Error> {
         err_fn,
         None,
     )?;
+
+    info!("<b>Signal duration: <u>{} milliseconds</>", signal_duration);
+    warn!("<yellow><warn></> <b>The end of the buffer may be filled with <blue>silence</><b>.</>");
+    logger.loading("<blue><info></><b> Playing sound</>");
     stream.play()?;
 
     // duration of the tone
-    std::thread::sleep(std::time::Duration::from_millis(signal_duration as u64));
+    sleep(Duration::from_millis(signal_duration as u64));
 
+    logger.done();
+
+    info!("<green><tick></> <b>Program finished <green>successfully</>");
     Ok(())
 }
 
@@ -106,13 +130,16 @@ fn module_chain(buffer_length: i32) -> Vec<f32> {
     let mut buffer: Vec<f32> = vec![0.0; buffer_length as usize];
 
     #[cfg(feature = "verbose_modules")]
-    println!("\nDEBUG OSC--");
+    warn!("<red><b>Verbose modules</> is a very <red><b>slow</> feature. I do only recommend using it on a few circumstances.");
+
+    #[cfg(feature = "verbose_modules")]
+    info!("DEBUG OSC--");
 
     let mut module2 = OscDebug::new(44100);
     module2.fill_buffer(&mut buffer);
 
     #[cfg(feature = "verbose_modules")]
-    println!("\nPASS THROUGH--");
+    info!("PASS THROUGH--");
     let mut module = PassTrough::new();
     module.fill_buffer(&mut buffer);
 
