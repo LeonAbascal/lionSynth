@@ -8,7 +8,6 @@ pub mod prelude {
 mod debug_modules;
 mod oscillator_math;
 
-#[cfg(debug_assertions)]
 pub mod debug {
     pub use crate::bundled_modules::debug_modules::{OscDebug, PassTrough};
 }

@@ -2,19 +2,14 @@ use crate::module::Module;
 use std::f32::consts::PI;
 
 // MODULES
-#[cfg(debug_assertions)]
-#[allow(dead_code)]
 pub struct PassTrough {}
 
-#[cfg(debug_assertions)]
-#[allow(dead_code)]
 pub struct OscDebug {
     clock: f32,
     sample_rate: f32,
 }
 
 // IMPLEMENTATIONS
-#[cfg(debug_assertions)]
 impl Module for PassTrough {
     fn behaviour(&self, in_sample: f32) -> f32 {
         in_sample // clean data
@@ -26,7 +21,6 @@ impl Module for PassTrough {
     }
 }
 
-#[cfg(debug_assertions)]
 impl Module for OscDebug {
     fn behaviour(&self, _: f32) -> f32 {
         let freq: f32 = 440.0;
@@ -42,16 +36,12 @@ impl Module for OscDebug {
 }
 
 // CONSTRUCTORS
-#[cfg(debug_assertions)]
-#[allow(dead_code)]
 impl PassTrough {
     pub fn new() -> Self {
         Self {}
     }
 }
 
-#[cfg(debug_assertions)]
-#[allow(dead_code)]
 impl OscDebug {
     pub fn new(sample_rate: i32) -> Self {
         Self {
@@ -68,7 +58,6 @@ mod test {
     use crate::SAMPLE_RATE;
 
     #[test]
-    #[cfg(debug_assertions)]
     fn test_debug_osc() {
         let mut tested_module = OscDebug::new(SAMPLE_RATE);
         let mut buffer: Vec<f32> = vec![0.0; 10];
@@ -92,7 +81,6 @@ mod test {
     }
 
     #[test]
-    #[cfg(debug_assertions)]
     fn test_pass_through() {
         let mut tested_module = PassTrough::new();
         let mut osc = OscDebug::new(SAMPLE_RATE);
