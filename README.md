@@ -3,7 +3,7 @@ Work in progress
 
 ### Dependencies:
 * Linux: [ALSA](http://www.escomposlinux.org/lfs-es/blfs-es-5.1/multimedia/alsa-tools.html)
-  * **Ubuntu**: `sudo apt install alsa_tools`
+  * **Ubuntu**: `sudo apt install libasound2-dev`
   * **Other**: not tested
 * Windows: running ok
 
