@@ -24,17 +24,14 @@ pub struct Oscillator {
     clock: f32,
     /// Amount of samples in a second
     sample_rate: f32,
-    frequency: f32,
-    amplitude: f32,
-    phase: f32,
     /// Parameter list
     parameters: Vec<Parameter>,
 }
 
 impl Module for Oscillator {
     fn behaviour(&self, _in_data: f32) -> f32 {
-        (self.clock * self.frequency * 2.0 * PI * self.amplitude + self.phase / self.sample_rate)
-            .sin()
+        ((self.clock * self.get_frequency() * 2.0 * PI / self.sample_rate) + self.get_phase()).sin()
+            * self.get_amplitude()
     }
 
     fn get_parameter_list_mutable(&mut self) -> &mut Vec<Parameter> {
@@ -132,23 +129,21 @@ impl OscillatorFactory {
         Ok(Oscillator {
             clock: 0.0,
             sample_rate,
-            frequency,
-            amplitude,
-            phase,
             parameters: vec![
                 ParameterFactory::new("amplitude".to_string())
-                    .with_default(0.8)
+                    .with_default(amplitude)
                     .build()
                     .unwrap(),
                 ParameterFactory::new("frequency".to_string())
                     .with_max(22000.0)
                     .with_min(10.0)
                     .with_step(1.0)
-                    .with_default(440.0)
+                    .with_default(frequency)
                     .build()
                     .unwrap(),
                 ParameterFactory::new("phase".to_string())
                     .with_max(PI * 2.0)
+                    .with_default(phase)
                     .build()
                     .unwrap(),
             ],

@@ -128,6 +128,7 @@ fn write_silence<T: Sample>(data: &mut [T], _: &cpal::OutputCallbackInfo) {
 fn module_chain(buffer_length: i32) -> Vec<f32> {
     // Buffer initialization (1 sec = 44100 samples)
     let mut buffer: Vec<f32> = vec![0.0; buffer_length as usize];
+    // let mut buffer: Vec<f32> = vec![0.0; 20]; // 'VERBOSE MODULES' BUFFER (purposely undersized)
 
     let mut oscillator = OscillatorFactory::new().build().unwrap();
 
