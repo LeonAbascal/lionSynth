@@ -18,12 +18,12 @@ impl Module for PassTrough {
         in_sample // clean data
     }
 
-    fn get_parameter_list_mutable(&mut self) -> &mut Vec<Parameter> {
-        &mut self.parameters
-    }
-
     fn get_parameter_list(&self) -> &Vec<Parameter> {
         &self.parameters
+    }
+
+    fn get_parameter_list_mutable(&mut self) -> &mut Vec<Parameter> {
+        &mut self.parameters
     }
 
     fn tick(&mut self) {}
@@ -38,12 +38,12 @@ impl Module for OscDebug {
         (self.clock * freq * 2.0 * PI / self.sample_rate).sin()
     }
 
-    fn get_parameter_list_mutable(&mut self) -> &mut Vec<Parameter> {
-        &mut self.parameters
-    }
-
     fn get_parameter_list(&self) -> &Vec<Parameter> {
         &self.parameters
+    }
+
+    fn get_parameter_list_mutable(&mut self) -> &mut Vec<Parameter> {
+        &mut self.parameters
     }
 
     fn tick(&mut self) {

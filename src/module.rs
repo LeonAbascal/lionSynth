@@ -14,7 +14,7 @@ pub struct LinkerModule {
 ///
 /// # How it works
 /// Each module is able to receive and retrieve a buffer of any size. Data (samples) is represented
-/// in a f32 format, and the module will modify it. For such, it will be calling the `behaviour()`
+/// in a [f32] format, and the module will modify it. For such, it will be calling the [behaviour](fn@Module::behaviour)
 /// method, which is the only one you need to override. I do not recommend overriding the rest
 /// of the methods.
 ///
@@ -47,12 +47,13 @@ pub trait Module {
         }
     }
 
-    /// Defines the behaviour of the module. Is it going to generate data? To clip the data under
-    /// a threshold? Here is where the magic happens. The behaviour is what defines a module.
+    /// Defines the behaviour of the module. Is it going to generate data? Is it going to clip the
+    /// data under a threshold? Here is where the magic happens. The **behaviour is what defines
+    /// a module.**
     /// # Arguments
     /// * `in_data`: the sample to modify, if any. Won't use it if creating a generator module.
     /// # Returns
-    /// A generated or modified sample
+    /// A generated or modified sample.
     fn behaviour(&self, in_data: f32) -> f32;
 
     /// Adds a parameter to the list of parameters. If the tag is already in the list,
@@ -72,21 +73,40 @@ pub trait Module {
         Ok(())
     }
 
-    /// Retrieves a parameter given its tag, if exists.
+    /// Retrieves a **mutable** parameter given its tag, if exists.
     fn get_parameter_mutable(&mut self, tag: &str) -> Option<&mut Parameter> {
         self.get_parameter_list_mutable()
             .into_iter()
             .find(|p| p.tag == tag)
     }
 
+    /// Retrieves a *non mutable* parameter given its tag, if exists. There is a mutable
+    /// alternative as well.
+    ///
+    ///
+    /// # Shortcut methods
+    /// I **strongly** recommend adding shortcut methods for your own modules, being this the
+    /// helper method for such.
+    ///
+    /// ## Example
+    /// You can find find a real implementation in the
+    /// [Oscillator](struct@crate::bundled_modules::Oscillator) module, **implementation section**.
+    /// ```rust
+    /// pub fn get_name_of_param(&self) -> f32 { // All parameters should return f32
+    ///     self.get_parameter("parameter_tag").unwrap().get_value() // Hiding the operation
+    /// }
+    ///
+    /// let current_value = module.get_name_of_param();
+    /// ```
     fn get_parameter(&self, tag: &str) -> Option<&Parameter> {
         self.get_parameter_list().into_iter().find(|p| p.tag == tag)
     }
 
     /// Gets all parameters in the list. Used to enforce the presence of a parameter
     /// list in every module struct.
-    fn get_parameter_list_mutable(&mut self) -> &mut Vec<Parameter>;
     fn get_parameter_list(&self) -> &Vec<Parameter>;
+    /// Gets all mutable parameters in the list.
+    fn get_parameter_list_mutable(&mut self) -> &mut Vec<Parameter>;
 
     /// Will define how the clock goes forward. Useful for timed operations
     fn tick(&mut self); // TODO: consider making the tick common with an associated function (class method) or a sync-er structure in the main flow
