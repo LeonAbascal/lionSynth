@@ -82,9 +82,10 @@ mod test {
         let mut tested_module = OscDebug::new(SAMPLE_RATE);
         let mut buffer: Vec<f32> = vec![0.0; 10];
 
-        tested_module.fill_buffer_w_aux(&mut buffer);
+        tested_module.fill_buffer(&mut buffer);
 
         let deterministic_buffer: Vec<f32> = vec![
+            0.0,
             0.062648326,
             0.12505053,
             0.18696144,
@@ -94,7 +95,6 @@ mod test {
             0.42487666,
             0.48075455,
             0.53474367,
-            0.586632,
         ];
 
         assert_eq!(deterministic_buffer, buffer);
@@ -107,10 +107,10 @@ mod test {
         let mut original_buffer: Vec<f32> = vec![0.0; 20];
 
         // MODIFY THE BUFFER
-        osc.fill_buffer_w_aux(&mut original_buffer);
+        osc.fill_buffer(&mut original_buffer);
         let mut modified_buffer = original_buffer.clone();
 
-        tested_module.fill_buffer_w_aux(&mut modified_buffer);
+        tested_module.fill_buffer(&mut modified_buffer);
         assert_eq!(original_buffer, modified_buffer);
     }
 }
