@@ -24,20 +24,62 @@ pub struct LinkerModule {
 ///
 /// # The parameters
 /// [Parameter] are what change the behaviour of the module in a specific moment.
-/// TODO: finish
+/// TODO: finish doc
 pub trait Module {
     // fn get_sample(&self); // real time behaviour?
 
     /// Fills the input buffer with new information. It may generate or modify the buffer.
-    /// Comes with a default implementation which automagically increases the clock of the
-    /// module and
+    ///
+    /// It also sets the clock forward and calls every function that needs to be updated on every
+    /// tick, such as the [behavior](fn@Module::behaviour) or the update of the parameters.
 
     // TODO stereo
-    fn fill_buffer(&mut self, buffer: &mut Vec<f32>) {
+    fn fill_buffer_w_aux(
+        &mut self,
+        buffer: &mut Vec<f32>,
+        auxiliaries: Option<Vec<AuxiliaryInput>>,
+    ) {
+        #[cfg(feature = "verbose_modules")]
         let mut count = 0;
+        let mut index = 0;
+
+        let mut amp_aux = None;
+        let mut freq_aux = None;
+        let mut phase_aux = None;
+
+        if auxiliaries.is_some() {
+            let mut auxiliaries = auxiliaries.unwrap();
+            for aux in auxiliaries {
+                match aux.tag.as_str() {
+                    "amplitude" => amp_aux = Some(aux),
+                    "frequency" => freq_aux = Some(aux),
+                    "phase" => phase_aux = Some(aux),
+                    _ => (),
+                }
+            }
+        }
+
+        // #[cfg(feature = "verbose_modules")]
+        {
+            if amp_aux.is_some() {
+                info!("<b>Found <green>amplitude</><b> auxiliary input</>");
+            }
+            if freq_aux.is_some() {
+                info!("<b>Found <green>frequency</><b> auxiliary input</>");
+            }
+            if phase_aux.is_some() {
+                info!("<b>Found <green>phase</><b> auxiliary input</>");
+            }
+        }
+
         for item in buffer {
-            self.tick();
+            // Pre-processing operations
+            self.inc_clock();
+
+            // Buffer processing
             *item = self.behaviour(*item);
+
+            index += 1;
 
             #[cfg(feature = "verbose_modules")]
             {
@@ -45,6 +87,10 @@ pub trait Module {
                 info!("<b>[ {} ]</> {}", count, item);
             }
         }
+    }
+
+    fn fill_buffer(&mut self, buffer: &mut Vec<f32>) {
+        self.fill_buffer_w_aux(buffer, None);
     }
 
     /// Defines the behaviour of the module. Is it going to generate data? Is it going to clip the
@@ -59,7 +105,7 @@ pub trait Module {
     /// Adds a parameter to the list of parameters. If the tag is already in the list,
     /// the operation gets rejected.
     fn add_parameter(&mut self, in_parameter: Parameter) -> Result<(), String> {
-        let parameters = self.get_parameter_list_mutable();
+        let parameters = self.get_parameters_mutable();
 
         let tag = &in_parameter.tag;
         let res = parameters.into_iter().find(|p| &p.tag == tag);
@@ -75,14 +121,13 @@ pub trait Module {
 
     /// Retrieves a **mutable** parameter given its tag, if exists.
     fn get_parameter_mutable(&mut self, tag: &str) -> Option<&mut Parameter> {
-        self.get_parameter_list_mutable()
+        self.get_parameters_mutable()
             .into_iter()
             .find(|p| p.tag == tag)
     }
 
     /// Retrieves a *non mutable* parameter given its tag, if exists. There is a mutable
     /// alternative as well.
-    ///
     ///
     /// # Shortcut methods
     /// I **strongly** recommend adding shortcut methods for your own modules, being this the
@@ -99,17 +144,55 @@ pub trait Module {
     /// let current_value = module.get_name_of_param();
     /// ```
     fn get_parameter(&self, tag: &str) -> Option<&Parameter> {
-        self.get_parameter_list().into_iter().find(|p| p.tag == tag)
+        self.get_parameters().into_iter().find(|p| p.tag == tag)
     }
 
     /// Gets all parameters in the list. Used to enforce the presence of a parameter
     /// list in every module struct.
-    fn get_parameter_list(&self) -> &Vec<Parameter>;
+    fn get_parameters(&self) -> &Vec<Parameter>;
     /// Gets all mutable parameters in the list.
-    fn get_parameter_list_mutable(&mut self) -> &mut Vec<Parameter>;
+    fn get_parameters_mutable(&mut self) -> &mut Vec<Parameter>;
 
-    /// Will define how the clock goes forward. Useful for timed operations
-    fn tick(&mut self); // TODO: consider making the tick common with an associated function (class method) or a sync-er structure in the main flow
+    fn update_all_parameters(&self);
+
+    fn set_aux(&mut self, tag: &str, buffer: Vec<f32>) -> Result<(), String> {
+        if self.get_parameter(tag).is_some() {
+            if self.exists_aux_input(tag) {
+                return Err("The auxiliary input already exists".to_string());
+            }
+            self.get_auxiliary_inputs_mut()
+                .push(AuxInputFactory::new(tag.to_string(), buffer).build());
+        } else {
+            return Err("The parameter must exit in order to work as auxiliary input. Check if the name is correct as well.".to_string());
+        }
+
+        Ok(())
+    }
+
+    fn get_auxiliary_inputs(&self) -> &Vec<AuxiliaryInput>;
+    fn get_auxiliary_inputs_mut(&mut self) -> &mut Vec<AuxiliaryInput>;
+
+    fn get_auxiliary_input(&self, tag: &str) -> Option<&AuxiliaryInput> {
+        for aux in self.get_auxiliary_inputs() {
+            if aux.tag == tag {
+                return Some(aux);
+            }
+        }
+        None
+    }
+
+    fn exists_aux_input(&self, tag: &str) -> bool {
+        for aux in self.get_auxiliary_inputs() {
+            if aux.tag == tag {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Will define how the clock goes forward. Useful for timed operations. Must increase by one
+    /// and start at zero to work properly with auxiliary inputs
+    fn inc_clock(&mut self); // TODO: consider making the clock common with an associated function (class method) or a sync-er structure in the main flow
     fn get_clock(&self) -> f32; // TODO: remove? tick already enforces the clock in the struct
 }
 
@@ -251,6 +334,46 @@ impl ParameterFactory {
             current,
             tag,
         })
+    }
+}
+
+pub struct AuxiliaryInput {
+    tag: String,
+    buffer: Vec<f32>,
+}
+
+impl AuxiliaryInput {
+    pub fn get_tag(&self) -> String {
+        self.tag.to_string()
+    }
+    pub fn get(&self, index: usize) -> Option<f32> {
+        match self.buffer.get(index) {
+            Some(x) => Some(x.clone()),
+            None => None,
+        }
+    }
+}
+
+impl AuxiliaryInput {}
+
+/// This struct is straightforward enough not to need the existence of a factory, but it is
+/// added for the sake of code consistency. The majority of the code works with factories and
+/// may be a bit counterintuitive not to follow the norm.
+pub struct AuxInputFactory {
+    tag: String,
+    buffer: Vec<f32>,
+}
+
+impl AuxInputFactory {
+    pub fn new(tag: String, buffer: Vec<f32>) -> Self {
+        Self { tag, buffer }
+    }
+
+    pub fn build(self) -> AuxiliaryInput {
+        AuxiliaryInput {
+            tag: self.tag,
+            buffer: self.buffer,
+        }
     }
 }
 

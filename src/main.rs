@@ -12,6 +12,7 @@ use simplelog::__private::paris::Logger;
 use simplelog::*;
 
 // MY STUFF
+use crate::module::AuxInputFactory;
 use back_end::{get_preferred_config, Channels};
 use bundled_modules::debug::{OscDebug, PassTrough};
 use bundled_modules::OscillatorFactory;
@@ -128,15 +129,25 @@ fn write_silence<T: Sample>(data: &mut [T], _: &cpal::OutputCallbackInfo) {
 fn module_chain(buffer_length: i32) -> Vec<f32> {
     // Buffer initialization (1 sec = 44100 samples)
     let mut buffer: Vec<f32> = vec![0.0; buffer_length as usize];
+    let mut modulator_buffer: Vec<f32> = vec![0.0; buffer_length as usize];
     // let mut buffer: Vec<f32> = vec![0.0; 20]; // 'VERBOSE MODULES' BUFFER (purposely undersized)
 
-    let mut oscillator = OscillatorFactory::new().build().unwrap();
+    let mut carrier = OscillatorFactory::new().build().unwrap();
+    let mut modulator = OscillatorFactory::new().build().unwrap();
 
-    oscillator.set_amplitude(0.8);
-    oscillator.set_frequency(660.0);
-    oscillator.set_phase(1.0);
+    carrier.set_amplitude(0.8);
+    carrier.set_frequency(660.0);
+    carrier.set_phase(1.0);
 
-    oscillator.fill_buffer(&mut buffer);
+    modulator.fill_buffer(&mut modulator_buffer);
+    carrier.fill_buffer_w_aux(
+        &mut buffer,
+        Some(vec![AuxInputFactory::new(
+            "frequency".to_string(),
+            modulator_buffer,
+        )
+        .build()]),
+    );
 
     #[cfg(feature = "verbose_modules")]
     info!("PASS THROUGH--");

@@ -1,4 +1,4 @@
-use crate::module::{Module, Parameter};
+use crate::module::{AuxiliaryInput, Module, Parameter};
 use std::f32::consts::PI;
 
 // MODULES
@@ -18,15 +18,23 @@ impl Module for PassTrough {
         in_sample // clean data
     }
 
-    fn get_parameter_list(&self) -> &Vec<Parameter> {
+    fn get_parameters(&self) -> &Vec<Parameter> {
         &self.parameters
     }
 
-    fn get_parameter_list_mutable(&mut self) -> &mut Vec<Parameter> {
+    fn get_parameters_mutable(&mut self) -> &mut Vec<Parameter> {
         &mut self.parameters
     }
 
-    fn tick(&mut self) {}
+    fn get_auxiliary_inputs(&self) -> &Vec<AuxiliaryInput> {
+        todo!()
+    }
+
+    fn get_auxiliary_inputs_mut(&mut self) -> &mut Vec<AuxiliaryInput> {
+        todo!()
+    }
+
+    fn inc_clock(&mut self) {}
     fn get_clock(&self) -> f32 {
         0.0
     }
@@ -38,15 +46,23 @@ impl Module for OscDebug {
         (self.clock * freq * 2.0 * PI / self.sample_rate).sin()
     }
 
-    fn get_parameter_list(&self) -> &Vec<Parameter> {
+    fn get_parameters(&self) -> &Vec<Parameter> {
         &self.parameters
     }
 
-    fn get_parameter_list_mutable(&mut self) -> &mut Vec<Parameter> {
+    fn get_parameters_mutable(&mut self) -> &mut Vec<Parameter> {
         &mut self.parameters
     }
 
-    fn tick(&mut self) {
+    fn get_auxiliary_inputs(&self) -> &Vec<AuxiliaryInput> {
+        todo!()
+    }
+
+    fn get_auxiliary_inputs_mut(&mut self) -> &mut Vec<AuxiliaryInput> {
+        todo!()
+    }
+
+    fn inc_clock(&mut self) {
         self.clock = (self.clock + 1.0) % self.sample_rate;
     }
     fn get_clock(&self) -> f32 {
@@ -82,7 +98,7 @@ mod test {
         let mut tested_module = OscDebug::new(SAMPLE_RATE);
         let mut buffer: Vec<f32> = vec![0.0; 10];
 
-        tested_module.fill_buffer(&mut buffer);
+        tested_module.fill_buffer_w_aux(&mut buffer);
 
         let deterministic_buffer: Vec<f32> = vec![
             0.062648326,
@@ -107,10 +123,10 @@ mod test {
         let mut original_buffer: Vec<f32> = vec![0.0; 20];
 
         // MODIFY THE BUFFER
-        osc.fill_buffer(&mut original_buffer);
+        osc.fill_buffer_w_aux(&mut original_buffer);
         let mut modified_buffer = original_buffer.clone();
 
-        tested_module.fill_buffer(&mut modified_buffer);
+        tested_module.fill_buffer_w_aux(&mut modified_buffer);
         assert_eq!(original_buffer, modified_buffer);
     }
 }

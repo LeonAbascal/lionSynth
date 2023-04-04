@@ -1,4 +1,4 @@
-use crate::module::{Module, Parameter, ParameterFactory};
+use crate::module::{AuxiliaryInput, Module, Parameter, ParameterFactory};
 use crate::SAMPLE_RATE;
 use std::f32::consts::PI;
 
@@ -12,6 +12,7 @@ use std::f32::consts::PI;
 /// (right below).
 ///
 /// # Parameters
+/// The following parameters are available for modifying to the user:
 /// * **Amplitude (A)**: translates to volume (gain). Ranges from 0 to 1. Taking it further will
 /// cause the output to clip.  
 /// * **Frequency (f)**: translates to tone (musical note). Ranges all through the human audible
@@ -23,7 +24,7 @@ use std::f32::consts::PI;
 /// # Behaviour
 /// The generation of a signal follows a simple formula:
 ///
-/// `x = A * sin(ω * f * t + φ)`
+/// `x = A * sin(f * t + φ)`
 ///
 /// Where `x` is the value at `t` time,
 /// `A` is the maximum amplitude of the wave,
@@ -38,6 +39,8 @@ pub struct Oscillator {
     sample_rate: f32,
     /// Parameter list
     parameters: Vec<Parameter>,
+    /// Auxiliary input list
+    auxiliary_inputs: Vec<AuxiliaryInput>,
 }
 
 impl Module for Oscillator {
@@ -46,15 +49,39 @@ impl Module for Oscillator {
             * self.get_amplitude()
     }
 
-    fn get_parameter_list(&self) -> &Vec<Parameter> {
+    fn get_parameters(&self) -> &Vec<Parameter> {
         &self.parameters
     }
 
-    fn get_parameter_list_mutable(&mut self) -> &mut Vec<Parameter> {
+    fn get_parameters_mutable(&mut self) -> &mut Vec<Parameter> {
         &mut self.parameters
     }
 
-    fn tick(&mut self) {
+    fn update_all_parameters(&self) {
+        let auxiliaries = self.get_auxiliary_inputs();
+        for aux in auxiliaries {
+            let tag = aux.get_tag();
+            let mut param = self.get_parameter_mutable(&tag).unwrap();
+
+            let prev = param.get_value();
+            let value = aux.get(self.clock as usize).unwrap_or(prev);
+
+            param.set(value);
+        }
+
+        // let x = self.get_auxiliary_input("amplitude").unwrap();
+        // self.set_frequency()
+    }
+
+    fn get_auxiliary_inputs(&self) -> &Vec<AuxiliaryInput> {
+        &self.auxiliary_inputs
+    }
+
+    fn get_auxiliary_inputs_mut(&mut self) -> &mut Vec<AuxiliaryInput> {
+        &mut self.auxiliary_inputs
+    }
+
+    fn inc_clock(&mut self) {
         self.clock = (self.clock + 1.0) % self.sample_rate;
     }
 
@@ -124,6 +151,10 @@ pub struct OscillatorFactory {
     amplitude: Option<f32>,
     phase: Option<f32>,
     parameters: Option<Vec<Parameter>>,
+
+    // Overriding
+    min: Option<f32>,
+    max: Option<f32>,
 }
 
 impl OscillatorFactory {
@@ -135,6 +166,8 @@ impl OscillatorFactory {
             amplitude: None,
             phase: None,
             parameters: None,
+            min: None,
+            max: None,
         }
     }
 
@@ -159,6 +192,13 @@ impl OscillatorFactory {
     /// Sets the **default** frequency of the *phase [parameter](struct@Parameter)*.
     pub fn with_phase(mut self, phase: f32) -> Self {
         self.phase = Some(phase);
+        self
+    }
+
+    /// Sets the range of the amplitude for generating the same signal varying within a different range.
+    pub fn overriding_amplitude_range(mut self, min: f32, max: f32) -> Self {
+        self.min = Some(min);
+        self.max = Some(max);
         self
     }
 
@@ -201,6 +241,7 @@ impl OscillatorFactory {
                     .build()
                     .unwrap(),
             ],
+            auxiliary_inputs: vec![],
         })
     }
 }
