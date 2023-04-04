@@ -26,14 +26,6 @@ impl Module for PassTrough {
         &mut self.parameters
     }
 
-    fn get_auxiliary_inputs(&self) -> &Vec<AuxiliaryInput> {
-        todo!()
-    }
-
-    fn get_auxiliary_inputs_mut(&mut self) -> &mut Vec<AuxiliaryInput> {
-        todo!()
-    }
-
     fn inc_clock(&mut self) {}
     fn get_clock(&self) -> f32 {
         0.0
@@ -52,14 +44,6 @@ impl Module for OscDebug {
 
     fn get_parameters_mutable(&mut self) -> &mut Vec<Parameter> {
         &mut self.parameters
-    }
-
-    fn get_auxiliary_inputs(&self) -> &Vec<AuxiliaryInput> {
-        todo!()
-    }
-
-    fn get_auxiliary_inputs_mut(&mut self) -> &mut Vec<AuxiliaryInput> {
-        todo!()
     }
 
     fn inc_clock(&mut self) {

@@ -1,4 +1,4 @@
-use crate::module::{AuxiliaryInput, Module, Parameter, ParameterFactory};
+use crate::module::{AuxiliaryInput, Module, Parameter, ParameterBuilder};
 use crate::SAMPLE_RATE;
 use std::f32::consts::PI;
 
@@ -6,7 +6,7 @@ use std::f32::consts::PI;
 /// following certain properties defined by its attributes.
 ///
 /// # Usage
-/// To generate a **new oscillator**, use the [OscillatorFactory] instead.
+/// To generate a **new oscillator**, use the [OscillatorBuilder] instead.
 ///
 /// To **change the behaviour** of an instance, use the functions named after the parameters
 /// (right below).
@@ -39,8 +39,6 @@ pub struct Oscillator {
     sample_rate: f32,
     /// Parameter list
     parameters: Vec<Parameter>,
-    /// Auxiliary input list
-    auxiliary_inputs: Vec<AuxiliaryInput>,
 }
 
 impl Module for Oscillator {
@@ -55,30 +53,6 @@ impl Module for Oscillator {
 
     fn get_parameters_mutable(&mut self) -> &mut Vec<Parameter> {
         &mut self.parameters
-    }
-
-    fn update_all_parameters(&self) {
-        let auxiliaries = self.get_auxiliary_inputs();
-        for aux in auxiliaries {
-            let tag = aux.get_tag();
-            let mut param = self.get_parameter_mutable(&tag).unwrap();
-
-            let prev = param.get_value();
-            let value = aux.get(self.clock as usize).unwrap_or(prev);
-
-            param.set(value);
-        }
-
-        // let x = self.get_auxiliary_input("amplitude").unwrap();
-        // self.set_frequency()
-    }
-
-    fn get_auxiliary_inputs(&self) -> &Vec<AuxiliaryInput> {
-        &self.auxiliary_inputs
-    }
-
-    fn get_auxiliary_inputs_mut(&mut self) -> &mut Vec<AuxiliaryInput> {
-        &mut self.auxiliary_inputs
     }
 
     fn inc_clock(&mut self) {
@@ -133,19 +107,19 @@ impl Oscillator {
     }
 }
 
-/// The [OscillatorFactory] is the proper way of generating an [Oscillator].
+/// The [OscillatorBuilder] is the proper way of generating an [Oscillator].
 /// # Usage
 /// ```rust
-/// let mut oscillator = OscillatorFactory::new().build().unwrap(); // Default oscillator
+/// let mut oscillator = OscillatorBuilder::new().build().unwrap(); // Default oscillator
 ///
-/// let osc = OscillatorFactory::new() // With most values
+/// let osc = OscillatorBuilder::new() // With most values
 ///     .with_amplitude(0.5)
 ///     .with_frequency(220.0)
 ///     .with_phase(1.0)
 ///     .build()
 ///     .unwrap();
 /// ```
-pub struct OscillatorFactory {
+pub struct OscillatorBuilder {
     sample_rate: Option<f32>,
     frequency: Option<f32>,
     amplitude: Option<f32>,
@@ -157,7 +131,7 @@ pub struct OscillatorFactory {
     max: Option<f32>,
 }
 
-impl OscillatorFactory {
+impl OscillatorBuilder {
     /// Sets the defaults for the oscillator (no parameters).
     pub fn new() -> Self {
         Self {
@@ -224,32 +198,31 @@ impl OscillatorFactory {
             clock: 0.0,
             sample_rate,
             parameters: vec![
-                ParameterFactory::new("amplitude".to_string())
+                ParameterBuilder::new("amplitude".to_string())
                     .with_default(amplitude)
                     .build()
                     .unwrap(),
-                ParameterFactory::new("frequency".to_string())
+                ParameterBuilder::new("frequency".to_string())
                     .with_max(22000.0)
                     .with_min(10.0)
                     .with_step(1.0)
                     .with_default(frequency)
                     .build()
                     .unwrap(),
-                ParameterFactory::new("phase".to_string())
+                ParameterBuilder::new("phase".to_string())
                     .with_max(PI * 2.0)
                     .with_default(phase)
                     .build()
                     .unwrap(),
             ],
-            auxiliary_inputs: vec![],
         })
     }
 }
 
 #[cfg(test)]
-mod oscillator_factory_tests {
+mod oscillator_builder_tests {
     use super::Module;
-    use super::OscillatorFactory;
+    use super::OscillatorBuilder;
     use simplelog::__private::paris::Logger;
     use std::f32::consts::PI;
 
@@ -260,9 +233,9 @@ mod oscillator_factory_tests {
     #[test]
     fn test_empty() {
         let mut logger = get_logger();
-        logger.info("<b>Running test for oscillator factory with no arguments</>");
+        logger.info("<b>Running test for oscillator builder with no arguments</>");
 
-        let osc = OscillatorFactory::new().build().unwrap();
+        let osc = OscillatorBuilder::new().build().unwrap();
 
         assert_eq!(osc.sample_rate, 44100.0, "Default sample mismatch");
         assert_eq!(osc.clock, 0.0, "Clock mismatch");
@@ -285,7 +258,7 @@ mod oscillator_factory_tests {
 
     #[test]
     fn test_all_fields() {
-        let osc = OscillatorFactory::new()
+        let osc = OscillatorBuilder::new()
             .with_amplitude(0.5)
             .with_frequency(220.0)
             .with_phase(1.0)
@@ -317,14 +290,14 @@ mod oscillator_factory_tests {
 
 #[cfg(test)]
 mod oscillator_tests {
-    use super::OscillatorFactory;
+    use super::OscillatorBuilder;
     use std::f32::consts::PI;
 
     // TODO: test wrong sets
 
     #[test]
     fn test_get_amplitude() {
-        let mut osc = OscillatorFactory::new().build().unwrap();
+        let mut osc = OscillatorBuilder::new().build().unwrap();
 
         osc.set_amplitude(1.0);
         let value = (&osc).get_amplitude();
@@ -337,7 +310,7 @@ mod oscillator_tests {
 
     #[test]
     fn test_get_frequency() {
-        let mut osc = OscillatorFactory::new().build().unwrap();
+        let mut osc = OscillatorBuilder::new().build().unwrap();
 
         osc.set_frequency(220.0);
         let value = (&osc).get_frequency();
@@ -350,7 +323,7 @@ mod oscillator_tests {
 
     #[test]
     fn test_get_phase() {
-        let mut osc = OscillatorFactory::new().build().unwrap();
+        let mut osc = OscillatorBuilder::new().build().unwrap();
 
         osc.set_phase(PI / 3.0);
         let value = (&osc).get_phase();

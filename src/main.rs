@@ -12,10 +12,10 @@ use simplelog::__private::paris::Logger;
 use simplelog::*;
 
 // MY STUFF
-use crate::module::AuxInputFactory;
+use crate::module::AuxInputBuilder;
 use back_end::{get_preferred_config, Channels};
 use bundled_modules::debug::{OscDebug, PassTrough};
-use bundled_modules::OscillatorFactory;
+use bundled_modules::OscillatorBuilder;
 use module::Module;
 
 const SAMPLE_RATE: i32 = 44100;
@@ -128,36 +128,47 @@ fn write_silence<T: Sample>(data: &mut [T], _: &cpal::OutputCallbackInfo) {
 
 fn module_chain(buffer_length: i32) -> Vec<f32> {
     // Buffer initialization (1 sec = 44100 samples)
+    // let buffer_length = 20;
     let mut buffer: Vec<f32> = vec![0.0; buffer_length as usize];
     let mut modulator_buffer: Vec<f32> = vec![0.0; buffer_length as usize];
-    // let mut buffer: Vec<f32> = vec![0.0; 20]; // 'VERBOSE MODULES' BUFFER (purposely undersized)
+    // let mut buffer: Vec<f32> = vec![0.0; 20]; // small BUFFER
 
-    let mut carrier = OscillatorFactory::new().build().unwrap();
-    let mut modulator = OscillatorFactory::new().build().unwrap();
+    let mut carrier = OscillatorBuilder::new().build().unwrap();
+    let mut modulator = OscillatorBuilder::new()
+        .with_frequency(440.0)
+        .build()
+        .unwrap();
 
-    carrier.set_amplitude(0.8);
-    carrier.set_frequency(660.0);
+    carrier.set_amplitude(0.1);
+    carrier.set_frequency(220.0);
     carrier.set_phase(1.0);
 
     modulator.fill_buffer(&mut modulator_buffer);
-    carrier.fill_buffer_w_aux(
-        &mut buffer,
-        Some(vec![AuxInputFactory::new(
-            "frequency".to_string(),
-            modulator_buffer,
-        )
-        .build()]),
-    );
 
-    #[cfg(feature = "verbose_modules")]
-    info!("PASS THROUGH--");
-    let mut module = PassTrough::new();
-    module.fill_buffer(&mut buffer);
+    let mut aux = AuxInputBuilder::new("frequency".to_string(), modulator_buffer)
+        .with_max(10.0)
+        .with_min(0.0)
+        .build();
+
+    carrier.fill_buffer_w_aux(&mut buffer, Some(vec![&mut aux]));
 
     #[cfg(feature = "verbose_modules")]
     {
+        // info!("PASS THROUGH--");
+        let mut module = PassTrough::new();
+        module.fill_buffer(&mut buffer);
+    }
+    #[cfg(feature = "module_values")]
+    {
         println!();
-        warn!("<blue><b>Verbose modules</> is a very <red><b>slow</> feature. I do only recommend using it with <blue><b>small</> buffers.");
+        info!("<b>You have activated <blue>Module Values</><b> feature.</>");
+        warn!("<blue><b>Module values</> <b>is a very <red><b>slow</><b> feature. I do only recommend using it with <blue><b>small</> buffers.");
+        println!();
+    }
+    #[cfg(feature = "verbose_modules")]
+    {
+        info!("<b>You have activated <blue>Verbose Modules</><b> feature.</>");
+        info!("<b>This will output more information about the <blue>inner process</> <b>of the modules.</>");
         println!();
     }
     buffer

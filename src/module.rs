@@ -1,4 +1,4 @@
-use simplelog::info;
+use simplelog::{info, warn, TermLogger};
 
 /// A **linker module** is a module able to connect into another. An example of linker module
 /// would be an effect module or an [ADSR](https://en.wikipedia.org/wiki/Envelope_(music)) module.
@@ -37,51 +37,85 @@ pub trait Module {
     fn fill_buffer_w_aux(
         &mut self,
         buffer: &mut Vec<f32>,
-        auxiliaries: Option<Vec<AuxiliaryInput>>,
+        auxiliaries: Option<Vec<&mut AuxiliaryInput>>,
     ) {
-        #[cfg(feature = "verbose_modules")]
-        let mut count = 0;
-        let mut index = 0;
+        warn!("<b>A <u>custom implementation</><b> for buffer filling with auxiliary inputs is recommended for better <yellow>performance</><b>.</>");
 
-        let mut amp_aux = None;
-        let mut freq_aux = None;
-        let mut phase_aux = None;
+        // AUXILIARY INPUTS MANAGEMENT STARTS HERE
+        // Map parameters
+        let mut temp_aux: Vec<Option<AuxiliaryInput>> =
+            Vec::with_capacity(self.get_parameter_count());
 
-        if auxiliaries.is_some() {
-            let mut auxiliaries = auxiliaries.unwrap();
-            for aux in auxiliaries {
-                match aux.tag.as_str() {
-                    "amplitude" => amp_aux = Some(aux),
-                    "frequency" => freq_aux = Some(aux),
-                    "phase" => phase_aux = Some(aux),
-                    _ => (),
+        if let Some(auxiliaries) = auxiliaries {
+            for param in self.get_parameters() {
+                if let Some(x) = auxiliaries.iter().find(|aux| aux.tag == param.tag) {
+                    temp_aux.push(Some((**x).clone()));
+                } else {
+                    temp_aux.push(None);
                 }
             }
         }
 
-        // #[cfg(feature = "verbose_modules")]
+        #[cfg(feature = "verbose_modules")]
         {
-            if amp_aux.is_some() {
-                info!("<b>Found <green>amplitude</><b> auxiliary input</>");
+            info!("<b>AUXILIARY LIST: {} items</>", temp_aux.len());
+            for item in temp_aux.iter() {
+                if item.is_none() {
+                    info!("  |_ <red>No item</>");
+                } else {
+                    info!("  |_ <green>{} aux found</>", item.as_ref().unwrap().tag);
+                }
             }
-            if freq_aux.is_some() {
-                info!("<b>Found <green>frequency</><b> auxiliary input</>");
-            }
-            if phase_aux.is_some() {
-                info!("<b>Found <green>phase</><b> auxiliary input</>");
-            }
+            println!();
         }
+
+        // Create closure
+        let mut pop_auxiliaries = move || -> Vec<Option<f32>> {
+            let mut values = Vec::with_capacity((&temp_aux).len());
+
+            for item in temp_aux.iter_mut() {
+                match item {
+                    Some(x) => values.push(item.as_mut().unwrap().pop()),
+                    None => values.push(None),
+                }
+            }
+
+            values
+        };
+        // AUXILIARY INPUTS MANAGEMENT ENDS HERE
+
+        #[cfg(feature = "module_values")]
+        let mut count = 0;
 
         for item in buffer {
             // Pre-processing operations
-            self.inc_clock();
-
             // Buffer processing
             *item = self.behaviour(*item);
 
-            index += 1;
+            let parameters = self.get_parameters_mutable();
+            let mut new_values = pop_auxiliaries();
+            new_values.reverse(); // We reverse it because later we use pop function
 
-            #[cfg(feature = "verbose_modules")]
+            for parameter in parameters {
+                let previous_value = parameter.get_value();
+
+                match new_values.pop().unwrap_or(None) {
+                    Some(new_value) => {
+                        #[cfg(feature = "module_values")]
+                        info!(
+                            "<b>Updating parameter <blue>{}</> <b>with {}</>",
+                            parameter.tag, new_value
+                        );
+                        parameter.set(new_value)
+                    }
+                    None => parameter.set(previous_value),
+                }
+            }
+
+            // POST-PROCESSING OPERATIONS
+            self.inc_clock();
+
+            #[cfg(feature = "module_values")]
             {
                 count = (count + 1) % 10;
                 info!("<b>[ {} ]</> {}", count, item);
@@ -153,41 +187,8 @@ pub trait Module {
     /// Gets all mutable parameters in the list.
     fn get_parameters_mutable(&mut self) -> &mut Vec<Parameter>;
 
-    fn update_all_parameters(&self);
-
-    fn set_aux(&mut self, tag: &str, buffer: Vec<f32>) -> Result<(), String> {
-        if self.get_parameter(tag).is_some() {
-            if self.exists_aux_input(tag) {
-                return Err("The auxiliary input already exists".to_string());
-            }
-            self.get_auxiliary_inputs_mut()
-                .push(AuxInputFactory::new(tag.to_string(), buffer).build());
-        } else {
-            return Err("The parameter must exit in order to work as auxiliary input. Check if the name is correct as well.".to_string());
-        }
-
-        Ok(())
-    }
-
-    fn get_auxiliary_inputs(&self) -> &Vec<AuxiliaryInput>;
-    fn get_auxiliary_inputs_mut(&mut self) -> &mut Vec<AuxiliaryInput>;
-
-    fn get_auxiliary_input(&self, tag: &str) -> Option<&AuxiliaryInput> {
-        for aux in self.get_auxiliary_inputs() {
-            if aux.tag == tag {
-                return Some(aux);
-            }
-        }
-        None
-    }
-
-    fn exists_aux_input(&self, tag: &str) -> bool {
-        for aux in self.get_auxiliary_inputs() {
-            if aux.tag == tag {
-                return true;
-            }
-        }
-        false
+    fn get_parameter_count(&self) -> usize {
+        self.get_parameters().len()
     }
 
     /// Will define how the clock goes forward. Useful for timed operations. Must increase by one
@@ -202,8 +203,8 @@ pub trait Module {
 /// interface for modifying such values from the main flow of the program.
 ///
 /// # Usage
-/// In any case, if you want to use parameters, please refer to the [ParameterFactory], which
-/// provides a modular factory for creating parameters.
+/// In any case, if you want to use parameters, please refer to the [ParameterBuilder], which
+/// provides a modular builder for creating parameters.
 #[derive(Debug, PartialEq)]
 pub struct Parameter {
     /// Maximum value that the parameter can reach.
@@ -221,7 +222,7 @@ pub struct Parameter {
     tag: String,
 }
 
-/// A parameter of a module. To create one, please refer to [ParameterFactory].
+/// A parameter of a module. To create one, please refer to [ParameterBuilder].
 impl Parameter {
     pub fn get_tag(&self) -> &String {
         &self.tag
@@ -262,10 +263,10 @@ impl Parameter {
     }
 }
 
-/// A factory pattern to create parameters in a modular fashion.
+/// A builder pattern to create parameters in a modular fashion.
 /// # Example
 ///
-pub struct ParameterFactory {
+pub struct ParameterBuilder {
     max: Option<f32>,
     min: Option<f32>,
     step: Option<f32>,
@@ -273,7 +274,7 @@ pub struct ParameterFactory {
     tag: String,
 }
 
-impl ParameterFactory {
+impl ParameterBuilder {
     pub fn new(tag: String) -> Self {
         Self {
             max: None,
@@ -337,18 +338,31 @@ impl ParameterFactory {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct AuxiliaryInput {
     tag: String,
     buffer: Vec<f32>,
+    max: f32,
+    min: f32,
 }
 
 impl AuxiliaryInput {
     pub fn get_tag(&self) -> String {
         self.tag.to_string()
     }
-    pub fn get(&self, index: usize) -> Option<f32> {
-        match self.buffer.get(index) {
-            Some(x) => Some(x.clone()),
+
+    /// Pops the latest value of the auxiliary input. Additionally, it performs a translation
+    /// from the values ranging from -1 to 1 that every module should output into the max and
+    /// min values specified when built.
+    fn pop(&mut self) -> Option<f32> {
+        match self.buffer.pop() {
+            Some(x) => {
+                let size = self.max - self.min;
+                let axis = (self.max + self.min) / 2.0;
+
+                let x = ((size * x + size) / 2.0) + axis;
+                Some(x)
+            }
             None => None,
         }
     }
@@ -356,30 +370,47 @@ impl AuxiliaryInput {
 
 impl AuxiliaryInput {}
 
-/// This struct is straightforward enough not to need the existence of a factory, but it is
-/// added for the sake of code consistency. The majority of the code works with factories and
-/// may be a bit counterintuitive not to follow the norm.
-pub struct AuxInputFactory {
+/// Auxiliary Input Builder
+pub struct AuxInputBuilder {
     tag: String,
     buffer: Vec<f32>,
+    max: Option<f32>,
+    min: Option<f32>,
 }
 
-impl AuxInputFactory {
+impl AuxInputBuilder {
     pub fn new(tag: String, buffer: Vec<f32>) -> Self {
-        Self { tag, buffer }
+        Self {
+            tag,
+            buffer,
+            max: None,
+            min: None,
+        }
+    }
+
+    pub fn with_max(mut self, max: f32) -> Self {
+        self.max = Some(max);
+        self
+    }
+
+    pub fn with_min(mut self, min: f32) -> Self {
+        self.min = Some(min);
+        self
     }
 
     pub fn build(self) -> AuxiliaryInput {
         AuxiliaryInput {
             tag: self.tag,
             buffer: self.buffer,
+            max: self.max.unwrap_or(0.0),
+            min: self.min.unwrap_or(1.0),
         }
     }
 }
 
 #[cfg(test)]
-mod parameter_factory_tests {
-    use crate::module::{Parameter, ParameterFactory};
+mod parameter_builder_tests {
+    use crate::module::{Parameter, ParameterBuilder};
     use log::info;
     use simplelog::__private::paris::Logger;
 
@@ -391,9 +422,9 @@ mod parameter_factory_tests {
     fn test_empty() {
         let mut logger = get_logger();
 
-        logger.info("<b>Running test for parameter factory with no arguments</>");
+        logger.info("<b>Running test for parameter builder with no arguments</>");
 
-        let tested_param = ParameterFactory::new(String::from("test")).build().unwrap();
+        let tested_param = ParameterBuilder::new(String::from("test")).build().unwrap();
         let testing_param = Parameter {
             max: 1.0,
             min: 0.0,
@@ -405,7 +436,7 @@ mod parameter_factory_tests {
 
         assert_eq!(
             tested_param, testing_param,
-            "Empty constructor for Parameter Factory failed"
+            "Empty constructor for Parameter Builder failed"
         );
 
         logger.success("<b>Test pass</>");
@@ -414,9 +445,9 @@ mod parameter_factory_tests {
     #[test]
     fn test_with_all_args() {
         let mut logger = get_logger();
-        logger.info("<b>Running test for parameter factory with all arguments</>");
+        logger.info("<b>Running test for parameter builder with all arguments</>");
 
-        let tested_param = ParameterFactory::new(String::from("test"))
+        let tested_param = ParameterBuilder::new(String::from("test"))
             .with_max(2.0)
             .with_min(1.0)
             .with_default(1.5)
@@ -435,7 +466,7 @@ mod parameter_factory_tests {
 
         assert_eq!(
             tested_param, testing_param,
-            "Constructor with all arguments for Parameter Factory failed"
+            "Constructor with all arguments for Parameter Builder failed"
         );
 
         logger.success("<b>Test pass</>");
@@ -444,7 +475,7 @@ mod parameter_factory_tests {
     #[test]
     #[should_panic]
     fn test_invalid_range_greater() {
-        ParameterFactory::new(String::from("test"))
+        ParameterBuilder::new(String::from("test"))
             .with_min(1.0)
             .with_max(0.0)
             .build()
@@ -454,7 +485,7 @@ mod parameter_factory_tests {
     #[test]
     #[should_panic]
     fn test_invalid_range_equal() {
-        ParameterFactory::new(String::from("test"))
+        ParameterBuilder::new(String::from("test"))
             .with_min(0.0)
             .with_max(0.0)
             .build()
@@ -464,7 +495,7 @@ mod parameter_factory_tests {
     #[test]
     #[should_panic]
     fn test_invalid_default_min() {
-        ParameterFactory::new(String::from("test"))
+        ParameterBuilder::new(String::from("test"))
             .with_min(1.0)
             .with_default(0.5)
             .build()
@@ -474,7 +505,7 @@ mod parameter_factory_tests {
     #[test]
     #[should_panic]
     fn test_invalid_default_max() {
-        ParameterFactory::new(String::from("test"))
+        ParameterBuilder::new(String::from("test"))
             .with_max(0.0)
             .with_default(0.5)
             .build()
@@ -484,7 +515,7 @@ mod parameter_factory_tests {
     #[test]
     #[should_panic]
     fn test_invalid_step() {
-        ParameterFactory::new(String::from("test"))
+        ParameterBuilder::new(String::from("test"))
             .with_max(1.0)
             .with_min(0.0)
             .with_step(1.5)

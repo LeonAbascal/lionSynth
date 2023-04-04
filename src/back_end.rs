@@ -117,6 +117,7 @@ pub fn query_config(
     sample_format: Option<SampleFormat>,
     sample_rate: Option<SampleRate>,
 ) -> SupportedStreamConfig {
+    println!();
     let mut supported_configs = query_configurations(device, channel_amt, sample_format);
 
     let range = supported_configs

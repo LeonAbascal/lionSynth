@@ -6,8 +6,9 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = []
+default = ["verbose_modules"]
 verbose_modules = []
+module_values = []
 
 [dependencies]
 cpal = "0.15.0"
