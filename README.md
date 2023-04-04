@@ -17,14 +17,17 @@ slow down the performance, they are deactivated by default, tho you can re-enabl
 default = ["verbose_modules"]   # Adding the option to the defaults of the program
 verbose_modules = []            # Verbose modules option
 ```
-You can find more information on the 
+You can find more information about features on the official
 [documentation](https://doc.rust-lang.org/cargo/reference/features.html).
 
-### Verbose modules
+### Module values
 Makes the modules output their value on each iteration. I only recommend using this option
 only on early debugging with a small set of samples generated, as output can get huge.
 
 `cargo run --features verbose_modules`
+
+### Verbose modules
+Makes small outputs of information that may be handy for debugging. 
 
 ## Testing
 Some logging has been added to the tests. To display (although not as beautifully as it could,
