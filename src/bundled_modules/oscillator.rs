@@ -1,6 +1,8 @@
 use crate::module::{AuxiliaryInput, Module, Parameter, ParameterBuilder};
 use crate::SAMPLE_RATE;
 use std::f32::consts::PI;
+use std::fmt;
+use std::fmt::{write, Formatter};
 
 /// The oscillator is the genesis of the chain. It does generate a raw signal
 /// following certain properties defined by its attributes.
@@ -39,6 +41,8 @@ pub struct Oscillator {
     sample_rate: f32,
     /// Parameter list
     parameters: Vec<Parameter>,
+    /// Name of the module (debugging)
+    name: String,
 }
 
 impl Module for Oscillator {
@@ -61,6 +65,10 @@ impl Module for Oscillator {
 
     fn get_clock(&self) -> f32 {
         self.clock
+    }
+
+    fn get_name(&self) -> String {
+        self.name.to_string()
     }
 }
 
@@ -125,23 +133,19 @@ pub struct OscillatorBuilder {
     amplitude: Option<f32>,
     phase: Option<f32>,
     parameters: Option<Vec<Parameter>>,
-
-    // Overriding
-    min: Option<f32>,
-    max: Option<f32>,
+    name: Option<String>,
 }
 
 impl OscillatorBuilder {
     /// Sets the defaults for the oscillator (no parameters).
     pub fn new() -> Self {
         Self {
+            name: None,
             sample_rate: None,
             frequency: None,
             amplitude: None,
             phase: None,
             parameters: None,
-            min: None,
-            max: None,
         }
     }
 
@@ -169,10 +173,8 @@ impl OscillatorBuilder {
         self
     }
 
-    /// Sets the range of the amplitude for generating the same signal varying within a different range.
-    pub fn overriding_amplitude_range(mut self, min: f32, max: f32) -> Self {
-        self.min = Some(min);
-        self.max = Some(max);
+    pub fn with_name(mut self, name: &str) -> Self {
+        self.name = Some(name.to_string());
         self
     }
 
@@ -187,6 +189,7 @@ impl OscillatorBuilder {
     /// # Expected errors
     /// * Frequency, amplitude or phase out of range.
     pub fn build(self) -> Result<Oscillator, String> {
+        let name = format!("{} {}", self.name.unwrap_or("".to_string()), "Oscillator");
         let sample_rate = self.sample_rate.unwrap_or(SAMPLE_RATE as f32);
         let frequency = self.frequency.unwrap_or(440.0);
         let amplitude = self.amplitude.unwrap_or(1.0);
@@ -195,6 +198,7 @@ impl OscillatorBuilder {
         // Value check left for the Parameter factories
 
         Ok(Oscillator {
+            name,
             clock: 0.0,
             sample_rate,
             parameters: vec![

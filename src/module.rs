@@ -39,6 +39,12 @@ pub trait Module {
         buffer: &mut Vec<f32>,
         auxiliaries: Option<Vec<&mut AuxiliaryInput>>,
     ) {
+        #[cfg(feature = "verbose_modules")]
+        {
+            println!();
+            info!("<b>Running module <cyan>{}</>", self.get_name());
+        }
+
         warn!("<b>A <u>custom implementation</><b> for buffer filling with auxiliary inputs is recommended for better <yellow>performance</><b>.</>");
 
         // AUXILIARY INPUTS MANAGEMENT STARTS HERE
@@ -58,7 +64,7 @@ pub trait Module {
 
         #[cfg(feature = "verbose_modules")]
         {
-            info!("<b>AUXILIARY LIST: {} items</>", temp_aux.len());
+            info!("<b>Auxiliary list: {} items</>", temp_aux.len());
             for item in temp_aux.iter() {
                 if item.is_none() {
                     info!("  |_ <red>No item</>");
@@ -195,6 +201,9 @@ pub trait Module {
     /// and start at zero to work properly with auxiliary inputs
     fn inc_clock(&mut self); // TODO: consider making the clock common with an associated function (class method) or a sync-er structure in the main flow
     fn get_clock(&self) -> f32; // TODO: remove? tick already enforces the clock in the struct
+
+    // USEFUL FOR DEBUGGING
+    fn get_name(&self) -> String;
 }
 
 /// Parameters are what control the behaviour of a module. For example, in an oscillator, some

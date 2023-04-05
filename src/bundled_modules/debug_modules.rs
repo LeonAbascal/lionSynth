@@ -30,6 +30,10 @@ impl Module for PassTrough {
     fn get_clock(&self) -> f32 {
         0.0
     }
+
+    fn get_name(&self) -> String {
+        "PassThrough".to_string()
+    }
 }
 
 impl Module for OscDebug {
@@ -51,6 +55,10 @@ impl Module for OscDebug {
     }
     fn get_clock(&self) -> f32 {
         self.clock
+    }
+
+    fn get_name(&self) -> String {
+        "Debug oscillator".to_string()
     }
 }
 

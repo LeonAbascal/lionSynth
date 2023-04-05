@@ -128,14 +128,18 @@ fn write_silence<T: Sample>(data: &mut [T], _: &cpal::OutputCallbackInfo) {
 
 fn module_chain(buffer_length: i32) -> Vec<f32> {
     // Buffer initialization (1 sec = 44100 samples)
-    // let buffer_length = 20;
+    let buffer_length = 20;
     let mut buffer: Vec<f32> = vec![0.0; buffer_length as usize];
     let mut modulator_buffer: Vec<f32> = vec![0.0; buffer_length as usize];
     // let mut buffer: Vec<f32> = vec![0.0; 20]; // small BUFFER
 
-    let mut carrier = OscillatorBuilder::new().build().unwrap();
+    let mut carrier = OscillatorBuilder::new()
+        .with_name("Carrier")
+        .build()
+        .unwrap();
     let mut modulator = OscillatorBuilder::new()
         .with_frequency(440.0)
+        .with_name("Modulator")
         .build()
         .unwrap();
 
@@ -161,13 +165,14 @@ fn module_chain(buffer_length: i32) -> Vec<f32> {
     #[cfg(feature = "module_values")]
     {
         println!();
-        info!("<b>You have activated <blue>Module Values</><b> feature.</>");
-        warn!("<blue><b>Module values</> <b>is a very <red><b>slow</><b> feature. I do only recommend using it with <blue><b>small</> buffers.");
+        info!("<b>You have activated <magenta>Module Values</><b> feature.</>");
+        info!("<b>This feature will output the <blue>final value</><b> of the module on each iteration and the values of the <blue>auxiliary inputs</><b>.</>");
+        warn!("<b>This is a very <yellow><u>slow</><b> feature. I do only recommend using it with <blue><b>small buffers</>.");
         println!();
     }
     #[cfg(feature = "verbose_modules")]
     {
-        info!("<b>You have activated <blue>Verbose Modules</><b> feature.</>");
+        info!("<b>You have activated <magenta>Verbose Modules</><b> feature.</>");
         info!("<b>This will output more information about the <blue>inner process</> <b>of the modules.</>");
         println!();
     }
