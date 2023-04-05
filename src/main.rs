@@ -149,10 +149,11 @@ fn module_chain(buffer_length: i32) -> Vec<f32> {
 
     modulator.fill_buffer(&mut modulator_buffer);
 
-    let mut aux = AuxInputBuilder::new("frequency".to_string(), modulator_buffer)
-        .with_max(10.0)
-        .with_min(0.0)
-        .build();
+    let mut aux = AuxInputBuilder::new("frequency", modulator_buffer)
+        .with_max(20.0)
+        .with_min(10.0)
+        .build()
+        .unwrap();
 
     carrier.fill_buffer_w_aux(&mut buffer, Some(vec![&mut aux]));
 

@@ -242,7 +242,7 @@ impl Parameter {
 
     /// Sets the value of a parameter
     pub fn set(&mut self, value: f32) {
-        if value < self.max || value > self.min {
+        if value <= self.max && value >= self.min {
             self.current = value;
         }
     }
@@ -320,7 +320,7 @@ impl ParameterBuilder {
         let current = default.clone();
         let tag = self.tag;
 
-        if max <= min {
+        if max < min {
             return Err("Non valid max/min range.".to_string());
         }
 
@@ -365,15 +365,15 @@ impl AuxiliaryInput {
     /// min values specified when built.
     fn pop(&mut self) -> Option<f32> {
         match self.buffer.pop() {
-            Some(x) => {
-                let size = self.max - self.min;
-                let axis = (self.max + self.min) / 2.0;
-
-                let x = ((size * x + size) / 2.0) + axis;
-                Some(x)
-            }
+            Some(x) => Some(self.translate(x)),
             None => None,
         }
+    }
+
+    fn translate(&self, value: f32) -> f32 {
+        let size = self.max - self.min;
+
+        ((size * value + size) / 2.0) + self.min
     }
 }
 
@@ -388,9 +388,9 @@ pub struct AuxInputBuilder {
 }
 
 impl AuxInputBuilder {
-    pub fn new(tag: String, buffer: Vec<f32>) -> Self {
+    pub fn new(tag: &str, buffer: Vec<f32>) -> Self {
         Self {
-            tag,
+            tag: tag.to_string(),
             buffer,
             max: None,
             min: None,
@@ -407,13 +407,20 @@ impl AuxInputBuilder {
         self
     }
 
-    pub fn build(self) -> AuxiliaryInput {
-        AuxiliaryInput {
+    pub fn build(self) -> Result<AuxiliaryInput, String> {
+        let max = self.max.unwrap_or(1.0);
+        let min = self.min.unwrap_or(0.0);
+
+        if max < min {
+            return Err("Invalid range".to_string());
+        }
+
+        Ok(AuxiliaryInput {
             tag: self.tag,
             buffer: self.buffer,
-            max: self.max.unwrap_or(0.0),
-            min: self.min.unwrap_or(1.0),
-        }
+            max,
+            min,
+        })
     }
 }
 
@@ -428,7 +435,7 @@ mod parameter_builder_tests {
     }
 
     #[test]
-    fn test_empty() {
+    fn test_default() {
         let mut logger = get_logger();
 
         logger.info("<b>Running test for parameter builder with no arguments</>");
@@ -530,5 +537,166 @@ mod parameter_builder_tests {
             .with_step(1.5)
             .build()
             .unwrap();
+    }
+}
+mod parameter_tests {
+    use super::{Parameter, ParameterBuilder};
+
+    fn get_parameter() -> Parameter {
+        ParameterBuilder::new("test".to_string())
+            .with_max(1.2)
+            .with_min(0.1)
+            .with_default(0.5)
+            .with_step(0.2)
+            .build()
+            .unwrap()
+    }
+
+    #[test]
+    fn test_get_tag() {
+        let parameter = get_parameter();
+
+        assert_eq!(parameter.get_tag(), "test");
+    }
+
+    #[test]
+    fn test_get_value() {
+        let mut parameter = get_parameter();
+
+        assert_eq!(parameter.get_value(), 0.5, "Current value mismatch");
+        parameter.set(0.1);
+        assert_eq!(parameter.get_value(), 0.1, "Current value mismatch");
+    }
+
+    #[test]
+    fn test_set_value() {
+        let mut parameter = get_parameter();
+
+        parameter.set(1.2);
+        assert_eq!(parameter.get_value(), 1.2, "Current value mismatch");
+        parameter.set(-1.0);
+        assert_eq!(parameter.get_value(), 1.2, "Smaller than check wrong");
+        parameter.set(10.0);
+        assert_eq!(parameter.get_value(), 1.2, "Greater than check wrong");
+    }
+
+    #[test]
+    fn test_inc() {
+        let mut parameter = get_parameter();
+
+        assert_eq!(parameter.get_value(), 0.5, "Default item is different");
+        parameter.inc();
+        assert_eq!(parameter.get_value(), 0.7, "Decrease not working");
+
+        parameter.set(1.1);
+        parameter.inc();
+        assert_eq!(
+            parameter.get_value(),
+            parameter.max,
+            "Increase out of bounds"
+        )
+    }
+
+    #[test]
+    fn test_dec() {
+        let mut parameter = get_parameter();
+
+        assert_eq!(parameter.get_value(), 0.5, "Default item is different");
+        parameter.dec();
+        assert_eq!(parameter.get_value(), 0.3, "Decrease not working");
+
+        parameter.set(0.2);
+        parameter.dec();
+        assert_eq!(
+            parameter.get_value(),
+            parameter.min,
+            "Decrease out of bounds"
+        )
+    }
+}
+
+mod auxiliary_input_builder_tests {
+    use super::AuxInputBuilder;
+
+    #[test]
+    fn test_default() {
+        let aux = AuxInputBuilder::new("test", vec![0.0]).build().unwrap();
+        assert_eq!(aux.tag, "test", "Default tag mismatch");
+        assert_eq!(aux.buffer, vec![0.0], "Default buffer mismatch");
+        assert_eq!(aux.max, 1.0, "Default max mismatch");
+        assert_eq!(aux.min, 0.0, "Default min mismatch");
+    }
+
+    #[test]
+    fn test_with_all() {
+        let aux = AuxInputBuilder::new("test", vec![0.0])
+            .with_max(10.0)
+            .with_min(5.0)
+            .build()
+            .unwrap();
+
+        assert_eq!(aux.tag, "test", "Default tag mismatch");
+        assert_eq!(aux.buffer, vec![0.0], "Default buffer mismatch");
+        assert_eq!(aux.max, 10.0, "Test max mismatch");
+        assert_eq!(aux.min, 5.0, "Default min mismatch");
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_with_invalid_range() {
+        AuxInputBuilder::new("test", vec![0.0])
+            .with_max(0.0)
+            .with_min(1.0)
+            .build()
+            .unwrap();
+    }
+}
+mod auxiliary_input_test {
+    use super::{AuxInputBuilder, AuxiliaryInput};
+
+    fn get_aux() -> AuxiliaryInput {
+        let buffer: Vec<f32> = vec![-1.0, 0.0, 1.0];
+        AuxInputBuilder::new("test", buffer)
+            .with_max(20.0)
+            .with_min(10.0)
+            .build()
+            .unwrap()
+    }
+
+    #[test]
+    fn test_get_tag() {
+        let aux = get_aux();
+
+        assert_eq!(aux.get_tag(), "test", "Default name mismatch");
+    }
+
+    #[test]
+    fn test_pop() {
+        let mut aux = get_aux();
+
+        assert_eq!(aux.pop(), Some(aux.max));
+        assert_eq!(aux.pop(), Some(15.0));
+        assert_eq!(aux.pop(), Some(aux.min));
+        assert_eq!(aux.pop(), None);
+    }
+
+    #[test]
+    fn test_translation() {
+        let buffer: Vec<f32> = vec![-1.0, -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, 1.0];
+        let mut aux = AuxInputBuilder::new("test", buffer)
+            .with_min(-10.0)
+            .with_max(10.0)
+            .build()
+            .unwrap();
+
+        assert_eq!(aux.pop(), Some(aux.max));
+        assert_eq!(aux.pop(), Some(7.5));
+        assert_eq!(aux.pop(), Some(5.0));
+        assert_eq!(aux.pop(), Some(2.5));
+        assert_eq!(aux.pop(), Some(0.0));
+        assert_eq!(aux.pop(), Some(-2.5));
+        assert_eq!(aux.pop(), Some(-5.0));
+        assert_eq!(aux.pop(), Some(-7.5));
+        assert_eq!(aux.pop(), Some(aux.min));
     }
 }

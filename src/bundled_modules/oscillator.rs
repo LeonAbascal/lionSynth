@@ -235,7 +235,7 @@ mod oscillator_builder_tests {
     }
 
     #[test]
-    fn test_empty() {
+    fn test_default() {
         let mut logger = get_logger();
         logger.info("<b>Running test for oscillator builder with no arguments</>");
 
