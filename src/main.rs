@@ -128,7 +128,7 @@ fn write_silence<T: Sample>(data: &mut [T], _: &cpal::OutputCallbackInfo) {
 
 fn module_chain(buffer_length: i32) -> Vec<f32> {
     // Buffer initialization (1 sec = 44100 samples)
-    let buffer_length = 20;
+    // let buffer_length = 20;
     let mut buffer: Vec<f32> = vec![0.0; buffer_length as usize];
     let mut modulator_buffer: Vec<f32> = vec![0.0; buffer_length as usize];
     // let mut buffer: Vec<f32> = vec![0.0; 20]; // small BUFFER
@@ -158,7 +158,6 @@ fn module_chain(buffer_length: i32) -> Vec<f32> {
 
     #[cfg(feature = "verbose_modules")]
     {
-        // info!("PASS THROUGH--");
         let mut module = PassTrough::new();
         module.fill_buffer(&mut buffer);
     }
