@@ -4,6 +4,8 @@ mod module;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{Device, FromSample, Sample, SampleFormat, SampleRate, StreamConfig};
+use std::fs;
+use std::path::Path;
 use std::thread::sleep;
 use std::time::Duration;
 
@@ -40,7 +42,9 @@ fn main() -> Result<(), anyhow::Error> {
     // FILL BUFFER
     info!("<b>Running <blue>demo program</>");
     let signal_duration: i32 = 1000; // milliseconds
-    let mut test_buffer = module_chain(signal_duration * SAMPLE_RATE / 1000);
+    let mut stream_buffer = module_chain(signal_duration * SAMPLE_RATE / 1000);
+
+    output_wav(stream_buffer.clone(), "test.wav");
 
     // get default host
     let host = cpal::default_host();
@@ -78,7 +82,7 @@ fn main() -> Result<(), anyhow::Error> {
      */
 
     // If there is no more values in the buffer, silence
-    let mut next_value = move || test_buffer.pop().unwrap_or(0.0);
+    let mut next_value = move || stream_buffer.pop().unwrap_or(0.0);
 
     let err_fn = |err| eprintln!("an error occurred on stream: {}", err);
 
@@ -143,7 +147,7 @@ fn module_chain(buffer_length: i32) -> Vec<f32> {
         .build()
         .unwrap();
 
-    carrier.set_amplitude(0.1);
+    carrier.set_amplitude(1.0);
     carrier.set_frequency(220.0);
     carrier.set_phase(1.0);
 
@@ -155,7 +159,8 @@ fn module_chain(buffer_length: i32) -> Vec<f32> {
         .build()
         .unwrap();
 
-    carrier.fill_buffer_w_aux(&mut buffer, Some(vec![&mut aux]));
+    // carrier.fill_buffer_w_aux(&mut buffer, Some(vec![&mut aux]));
+    carrier.fill_buffer_w_aux(&mut buffer, None);
 
     #[cfg(feature = "verbose_modules")]
     {
@@ -177,4 +182,42 @@ fn module_chain(buffer_length: i32) -> Vec<f32> {
         println!();
     }
     buffer
+}
+
+fn output_wav(buffer: Vec<f32>, filename: &str) {
+    use hound;
+    let spec = hound::WavSpec {
+        channels: 1,
+        sample_rate: 44100,
+        bits_per_sample: 16,
+        sample_format: hound::SampleFormat::Int,
+    };
+
+    info!("<b>Running <magenta>hound</> <b>to generate a wav file.</>");
+    info!("  <b>|_ Channels: <cyan>{}</>", spec.channels);
+    info!("  <b>|_ Bits per sample: <cyan>{}</>", spec.bits_per_sample);
+    info!(
+        "  <b>|_ Sample format: {}</>",
+        match spec.sample_format {
+            hound::SampleFormat::Int => "<yellow>int",
+            hound::SampleFormat::Float => "<cyan>float",
+        }
+    );
+
+    let subdir = "exports".to_string();
+    info!("  <b>|_ Export directory: <green>.{}/</>", subdir);
+    info!("  <b>|_ File name: <green>{}</>", filename);
+
+    fs::create_dir_all(&subdir).unwrap();
+    let filename = subdir + "/" + filename;
+
+    let mut test_writer = hound::WavWriter::create(filename, spec).unwrap();
+    let amplitude = i16::MAX as f32;
+    for sample in buffer {
+        test_writer
+            .write_sample((amplitude * sample) as i16)
+            .unwrap();
+    }
+
+    test_writer.finalize().unwrap();
 }
