@@ -153,41 +153,59 @@ fn module_chain_from_yaml() -> Vec<f32> {
 
     for module in layout.clone().into_iter() {
         let module = &module["module"];
+        let module_type = &module["type"];
+
+        if module_type.as_str().is_none() {
+            error!("<b>Module <red>type</> <b>not specified.</>");
+            panic!();
+        }
+
+        let module_type = module_type.as_str().unwrap();
         let config = &module["config"];
         let name = config["name"].as_str();
-        let sample_rate = config["sample_rate"].as_i64();
-        let amp = config["amplitude"].as_f64();
-        let freq = config["frequency"].as_f64();
-        let phase = config["phase"].as_f64();
 
-        let osc = OscillatorBuilder::new()
-            .with_all_yaml_fmt(name, sample_rate, amp, freq, phase)
-            .build()
-            .unwrap();
+        match module_type {
+            "oscillator" => {
+                let sample_rate = config["sample_rate"].as_i64();
+                let amp = config["amplitude"].as_f64();
+                let freq = config["frequency"].as_f64();
+                let phase = config["phase"].as_f64();
+
+                let osc = OscillatorBuilder::new()
+                    .with_all_yaml_fmt(name, sample_rate, amp, freq, phase)
+                    .build()
+                    .unwrap();
+            }
+
+            _ => {
+                error!("<b>Module type <red>not found</><b>.</>");
+            }
+        }
 
         #[cfg(feature = "verbose_modules")]
         {
             info!("<b>MODULE {}</>", module["id"].as_i64().unwrap());
-            info!("  |_ type: {}</>", module["type"].as_str().unwrap());
+            info!("  |_ type: {}</>", module_type);
             let out_to = module["output-to"].as_i64().unwrap();
-            info!("  |_ out-os: {}</>", out_to);
+            info!("  |_ output to module: {}</>", out_to);
             info!("  |_ config");
             info!("     |_ name: {}", name.unwrap_or("not defined"));
-            if let Some(sample_rate) = sample_rate {
-                info!("     |_ sample rate: {}", sample_rate);
-            }
-            if let Some(amp) = amp {
-                info!("     |_ amplitude: {}", amp);
-            }
-            if let Some(freq) = freq {
-                info!("     |_ frequency: {}", freq);
-            }
-            if let Some(phase) = phase {
-                info!("     |_ phase: {}", phase);
-            }
+            // if let Some(sample_rate) = sample_rate {
+            //     info!("     |_ sample rate: {}", sample_rate);
+            // }
+            // if let Some(amp) = amp {
+            //     info!("     |_ amplitude: {}", amp);
+            // }
+            // if let Some(freq) = freq {
+            //     info!("     |_ frequency: {}", freq);
+            // }
+            // if let Some(phase) = phase {
+            //     info!("     |_ phase: {}", phase);
+            // }
+
+            println!();
         }
     }
-
     exit(0);
 
     Vec::with_capacity(44100)
