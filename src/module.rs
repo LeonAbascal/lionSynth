@@ -539,6 +539,7 @@ mod parameter_builder_tests {
             .unwrap();
     }
 }
+#[cfg(test)]
 mod parameter_tests {
     use super::{Parameter, ParameterBuilder};
 
@@ -615,6 +616,7 @@ mod parameter_tests {
     }
 }
 
+#[cfg(test)]
 mod auxiliary_input_builder_tests {
     use super::AuxInputBuilder;
 
@@ -651,6 +653,7 @@ mod auxiliary_input_builder_tests {
             .unwrap();
     }
 }
+#[cfg(test)]
 mod auxiliary_input_test {
     use super::{AuxInputBuilder, AuxiliaryInput};
 
