@@ -1,0 +1,29 @@
+---
+version: 0.2
+
+layout:
+  # An example with all parameters set
+  - module:
+      id: 0
+      type: oscillator
+      output-to: -1 # todo evaluate
+      config:
+        name: modulator
+        sample_rate: 44100
+        amplitude: 0.8
+        frequency: 440.0
+        phase: 0.2
+      auxiliaries:
+        - aux:
+            id-from: 1
+            linked-with: frequency
+            max: 20
+            min: 10
+  # An example with only compulsory parameters set
+  - module:
+      id: 1
+      type: oscillator
+      output-to: 0 # todo evaluate
+      config:
+        name: carrier
+        frequency: 20

@@ -6,6 +6,7 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{Device, FromSample, Sample, SampleFormat, SampleRate, StreamConfig};
 use std::fs;
 use std::path::Path;
+use std::process::exit;
 use std::thread::sleep;
 use std::time::Duration;
 
@@ -45,6 +46,7 @@ fn main() -> Result<(), anyhow::Error> {
     let mut stream_buffer = module_chain(signal_duration * SAMPLE_RATE / 1000);
 
     output_wav(stream_buffer.clone(), "test.wav");
+    module_chain_from_yaml(); // TODO TESTING
 
     // get default host
     let host = cpal::default_host();
@@ -130,6 +132,67 @@ fn write_silence<T: Sample>(data: &mut [T], _: &cpal::OutputCallbackInfo) {
     }
 }
 
+fn module_chain_from_yaml() -> Vec<f32> {
+    use yaml_rust::{YamlEmitter, YamlLoader};
+    println!(); // Logger cleanspace
+
+    let yaml = &fs::read_to_string("layouts/layout.yaml").unwrap();
+
+    let doc = YamlLoader::load_from_str(yaml).unwrap();
+    let doc = &doc[0];
+
+    let version = *&doc["version"].as_f64().unwrap_or(0.0);
+    let layout = &doc["layout"];
+
+    if version != 0.2f64 {
+        error!("<b>Please use the <red>latest YAML</> <b>version.</>");
+        panic!("")
+    } else {
+        info!("<b>Using <blue>version</> <b>{}</>", version);
+    }
+
+    for module in layout.clone().into_iter() {
+        let module = &module["module"];
+        let config = &module["config"];
+        let name = config["name"].as_str();
+        let sample_rate = config["sample_rate"].as_i64();
+        let amp = config["amplitude"].as_f64();
+        let freq = config["frequency"].as_f64();
+        let phase = config["phase"].as_f64();
+
+        let osc = OscillatorBuilder::new()
+            .with_all_yaml_fmt(name, sample_rate, amp, freq, phase)
+            .build()
+            .unwrap();
+
+        #[cfg(feature = "verbose_modules")]
+        {
+            info!("<b>MODULE {}</>", module["id"].as_i64().unwrap());
+            info!("  |_ type: {}</>", module["type"].as_str().unwrap());
+            let out_to = module["output-to"].as_i64().unwrap();
+            info!("  |_ out-os: {}</>", out_to);
+            info!("  |_ config");
+            info!("     |_ name: {}", name.unwrap_or("not defined"));
+            if let Some(sample_rate) = sample_rate {
+                info!("     |_ sample rate: {}", sample_rate);
+            }
+            if let Some(amp) = amp {
+                info!("     |_ amplitude: {}", amp);
+            }
+            if let Some(freq) = freq {
+                info!("     |_ frequency: {}", freq);
+            }
+            if let Some(phase) = phase {
+                info!("     |_ phase: {}", phase);
+            }
+        }
+    }
+
+    exit(0);
+
+    Vec::with_capacity(44100)
+}
+
 fn module_chain(buffer_length: i32) -> Vec<f32> {
     // Buffer initialization (1 sec = 44100 samples)
     // let buffer_length = 20;
@@ -160,7 +223,7 @@ fn module_chain(buffer_length: i32) -> Vec<f32> {
         .unwrap();
 
     // carrier.fill_buffer_w_aux(&mut buffer, Some(vec![&mut aux]));
-    carrier.fill_buffer_w_aux(&mut buffer, None);
+    carrier.fill_buffer_w_aux(&mut buffer, Some(vec![&mut aux]));
 
     #[cfg(feature = "verbose_modules")]
     {
@@ -185,7 +248,6 @@ fn module_chain(buffer_length: i32) -> Vec<f32> {
 }
 
 fn output_wav(buffer: Vec<f32>, filename: &str) {
-    use hound;
     let spec = hound::WavSpec {
         channels: 1,
         sample_rate: 44100,
