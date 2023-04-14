@@ -1,0 +1,35 @@
+---
+version: 0.3
+
+layout:
+  - module:
+      id: 2
+      type: pass_through
+      output-to: -1 # todo evaluate
+      input-from: 1
+
+  - module:
+      id: 1
+      type: pass_through
+      output-to: 2 # todo evaluate
+      input-from: 3
+
+  - module:
+      id: 3
+      type: oscillator
+      output-to: 1
+      config:
+        name: "#2"
+      auxiliaries:
+        - aux:
+            id-from: 0
+            linked-with: frequency
+            max: 20
+            min: 10
+
+  - module:
+      id: 0
+      type: oscillator
+      output-to: 1
+      config:
+        name: "#1"

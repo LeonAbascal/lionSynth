@@ -1,5 +1,5 @@
 ---
-version: 0.2
+version: 0.3
 
 layout:
   # An example with all parameters set
@@ -7,6 +7,7 @@ layout:
       id: 0
       type: oscillator
       output-to: -1 # todo evaluate
+      # input-from: -1
       config:
         name: modulator
         sample_rate: 44100
@@ -19,11 +20,17 @@ layout:
             linked-with: frequency
             max: 20
             min: 10
+        - aux:
+            id-from: 3
+            linked-with: amplitude
+            max: 1
+            min: 0
   # An example with only compulsory parameters set
   - module:
       id: 1
       type: oscillator
       output-to: 0 # todo evaluate
+      # no input from in a generator module
       config:
         name: carrier
         frequency: 20
