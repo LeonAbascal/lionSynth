@@ -176,6 +176,10 @@ fn fill_buffers(
     }
 
     let aux_list_ptr: Vec<&mut AuxiliaryInput> = aux_list.iter_mut().map(|aux| aux).collect();
+    let aux_list_ptr = match aux_list_ptr.len() {
+        0 => None,
+        _ => Some(aux_list_ptr),
+    };
 
     // GENERATE OR PROCESS BUFFER
     return if next_id.is_some() {
@@ -183,7 +187,9 @@ fn fill_buffers(
 
         let next_id = next_id.unwrap();
         let mut buffer = fill_buffers(module_chain, next_id, buffer_size);
-        current_module.module.fill_buffer(&mut buffer);
+        current_module
+            .module
+            .fill_buffer_w_aux(&mut buffer, aux_list_ptr);
         buffer
     } else {
         // GENERATOR MODULE
@@ -192,7 +198,7 @@ fn fill_buffers(
 
         current_module
             .module
-            .fill_buffer_w_aux(&mut buffer, Some(aux_list_ptr));
+            .fill_buffer_w_aux(&mut buffer, aux_list_ptr);
         buffer
     };
 }
