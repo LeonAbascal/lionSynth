@@ -264,6 +264,7 @@ impl OscillatorBuilder {
 mod oscillator_builder_tests {
     use super::Module;
     use super::OscillatorBuilder;
+    use crate::bundled_modules::Oscillator;
     use simplelog::__private::paris::Logger;
     use std::f32::consts::PI;
 
@@ -326,7 +327,56 @@ mod oscillator_builder_tests {
         assert_eq!(phase.unwrap().get_value(), 1.0, "Phase parameter differs");
     }
 
-    // TODO: should panic tests?
+    #[test]
+    #[should_panic]
+    fn test_invalid_amplitude_max() {
+        OscillatorBuilder::new()
+            .with_amplitude(1.1)
+            .build()
+            .unwrap();
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_invalid_amplitude_min() {
+        OscillatorBuilder::new()
+            .with_amplitude(-0.1)
+            .build()
+            .unwrap();
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_invalid_frequency_min() {
+        OscillatorBuilder::new()
+            .with_frequency(-1.0)
+            .build()
+            .unwrap();
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_invalid_frequency_max() {
+        OscillatorBuilder::new()
+            .with_frequency(22000.1)
+            .build()
+            .unwrap();
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_invalid_phase_min() {
+        OscillatorBuilder::new().with_phase(-1.0).build().unwrap();
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_invalid_phase_max() {
+        OscillatorBuilder::new()
+            .with_phase(PI * 3.0)
+            .build()
+            .unwrap();
+    }
 }
 
 #[cfg(test)]
@@ -334,7 +384,50 @@ mod oscillator_tests {
     use super::OscillatorBuilder;
     use std::f32::consts::PI;
 
-    // TODO: test wrong sets
+    #[test]
+    fn test_set_amplitude() {
+        let mut osc = OscillatorBuilder::new().build().unwrap();
+
+        osc.set_amplitude(0.5);
+        let prev = osc.get_amplitude();
+        osc.set_amplitude(1.1);
+        let mut post = osc.get_amplitude();
+        assert_eq!(prev, post, "Amplitude should not surpass the maximum.");
+
+        osc.set_amplitude(-1.0);
+        post = osc.get_amplitude();
+        assert_eq!(prev, post, "Amplitude should not surpass the minimum.");
+    }
+
+    #[test]
+    fn test_set_frequency() {
+        let mut osc = OscillatorBuilder::new().build().unwrap();
+
+        osc.set_frequency(440.0);
+        let prev = osc.get_frequency();
+        osc.set_frequency(22100.0);
+        let mut post = osc.get_frequency();
+        assert_eq!(prev, post, "Frequency should not surpass the maximum.");
+
+        osc.set_frequency(-1.0);
+        post = osc.get_frequency();
+        assert_eq!(prev, post, "Frequency should not surpass the minimum.");
+    }
+
+    #[test]
+    fn test_set_phase() {
+        let mut osc = OscillatorBuilder::new().build().unwrap();
+
+        osc.set_phase(0.0);
+        let prev = osc.get_phase();
+        osc.set_phase(PI * 3.0);
+        let mut post = osc.get_phase();
+        assert_eq!(prev, post, "Phase should not surpass the maximum.");
+
+        osc.set_phase(-1.0);
+        post = osc.get_phase();
+        assert_eq!(prev, post, "Phase should not surpass the minimum.");
+    }
 
     #[test]
     fn test_get_amplitude() {
