@@ -26,12 +26,12 @@ layout:
         phase: 0.2
       auxiliaries:
         - aux:
-            id-from: 1
+            from-id: 1
             linked-with: frequency
             max: 20
             min: 10
         - aux:
-            id-from: 3
+            from-id: 3
             linked-with: amplitude
             max: 1
             min: 0

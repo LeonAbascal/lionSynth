@@ -1,47 +1,26 @@
 ---
-version: 0.3
+version: 0.4
 
 layout:
   - module:
-      id: 2
+      id: 0
       type: pass_through
-      output-to: -1 # todo evaluate
+      os-out: true
       input-from: 1
-
   - module:
       id: 1
-      type: pass_through
-      output-to: 2 # todo evaluate
-      input-from: 3
-
-  - module:
-      id: 3
       type: oscillator
-      output-to: 1
       config:
-        name: "#2"
+        name: test
+        frequency: 20.0
       auxiliaries:
         - aux:
-            id-from: 0
+            from-id: 2
             linked-with: frequency
             max: 20
             min: 10
-
   - module:
-      id: 0
+      id: 2
       type: oscillator
-      output-to: 1
       config:
-        name: "#1"
-      auxiliaries:
-        - aux:
-            id-from: 4
-            linked-with: amplitude
-            max: 1
-            min: -1
-  - module:
-      id: 4
-      type: oscillator
-      output-to: 0
-      config:
-        name: "#3"
+        name: carrier

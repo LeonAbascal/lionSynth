@@ -117,7 +117,7 @@ pub fn module_chain_from_yaml(file: &str, buffer_length: usize) -> Vec<f32> {
             let aux = &aux["aux"];
 
             auxiliaries.push(AuxInfo {
-                from_module: aux["id-from"].as_i64().unwrap(),
+                from_module: aux["from-id"].as_i64().unwrap(),
                 linked_with: aux["linked-with"].as_str().unwrap().to_string(),
                 max: aux["max"].as_i64(),
                 min: aux["min"].as_i64(),
@@ -160,13 +160,28 @@ fn fill_buffers(
     buffer_size: usize,
 ) -> Vec<f32> {
     let current_borrowed_module = module_chain.get(&current_pos).unwrap();
-    let condition = current_borrowed_module.from_module.is_some();
+    let next_id = current_borrowed_module.from_module;
+    let mut current_module = module_chain.remove(&current_pos).unwrap();
 
-    return if condition {
-        // LINKER MODULE
+    // AUXILIARIES
+    let mut aux_list: Vec<AuxiliaryInput> = Vec::new();
 
-        let next_id = current_borrowed_module.from_module.unwrap();
-        let mut current_module = module_chain.remove(&current_pos).unwrap();
+    for aux in current_module.auxiliaries {
+        let aux_buffer = fill_buffers(module_chain, aux.from_module, buffer_size);
+        let aux = AuxInputBuilder::new(&aux.linked_with, aux_buffer)
+            .build()
+            .unwrap();
+
+        aux_list.push(aux);
+    }
+
+    let aux_list_ptr: Vec<&mut AuxiliaryInput> = aux_list.iter_mut().map(|aux| aux).collect();
+
+    // GENERATE OR PROCESS BUFFER
+    return if next_id.is_some() {
+        // LINKER MODULE (PROCESS BUFFER)
+
+        let next_id = next_id.unwrap();
         let mut buffer = fill_buffers(module_chain, next_id, buffer_size);
         current_module.module.fill_buffer(&mut buffer);
         buffer
@@ -174,18 +189,10 @@ fn fill_buffers(
         // GENERATOR MODULE
 
         let mut buffer = vec![0.0f32; buffer_size];
-        let mut current_module = module_chain.remove(&current_pos).unwrap();
-        let mut aux_list: Vec<AuxiliaryInput> = Vec::new();
-        for aux in current_module.auxiliaries {
-            let aux_buffer = fill_buffers(module_chain, aux.from_module, buffer_size);
-            let aux = AuxInputBuilder::new(&aux.linked_with, aux_buffer)
-                .build()
-                .unwrap();
 
-            aux_list.push(aux);
-        }
-
-        current_module.module.fill_buffer(&mut buffer);
+        current_module
+            .module
+            .fill_buffer_w_aux(&mut buffer, Some(aux_list_ptr));
         buffer
     };
 }
