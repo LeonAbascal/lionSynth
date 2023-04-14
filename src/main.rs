@@ -50,7 +50,7 @@ fn main() -> Result<(), anyhow::Error> {
     let buffer_size: usize = (signal_duration * SAMPLE_RATE / 1000) as usize;
     // let mut stream_buffer = module_chain(buffer_size);
 
-    let mut stream_buffer = module_chain_from_yaml("test.yaml", buffer_size); // TODO TESTING
+    let mut stream_buffer = module_chain_from_yaml("test.yaml", buffer_size);
     output_wav(stream_buffer.clone(), "test.wav");
 
     // get default host

@@ -153,7 +153,6 @@ pub fn module_chain_from_yaml(file: &str, buffer_length: usize) -> Vec<f32> {
     buffer
 }
 
-// TODO auxiliaries for not origin
 fn fill_buffers(
     module_chain: &mut HashMap<i64, ChainCell>,
     current_pos: i64,
@@ -202,6 +201,3 @@ fn fill_buffers(
         buffer
     };
 }
-
-// TODO
-fn check_duplicated_ids() {}
