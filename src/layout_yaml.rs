@@ -1,10 +1,11 @@
 use crate::bundled_modules::debug::*;
 use crate::bundled_modules::*;
-use crate::module::Module;
+use crate::module::{AuxInputBuilder, AuxiliaryInput, Module};
 use crate::SAMPLE_RATE;
 use simplelog::{error, info};
 use std::collections::HashMap;
 use std::fs;
+use std::process::exit;
 use yaml_rust::{YamlEmitter, YamlLoader};
 
 struct ChainCell {
@@ -39,7 +40,10 @@ pub fn module_chain_from_yaml(file: &str, buffer_length: usize) -> Vec<f32> {
         error!("<b>Please use the <red>latest YAML</> <b>version.</>");
         panic!();
     } else {
-        info!("<b>Using <blue>version</> <b>{}</>", version);
+        info!(
+            "<b>Using <magenta>YAML parsing</> version: <b><cyan>{}</>",
+            version
+        );
     }
 
     info!("<b>Creating module chain.</>");
@@ -117,21 +121,7 @@ pub fn module_chain_from_yaml(file: &str, buffer_length: usize) -> Vec<f32> {
                 panic!();
             }
         }
-
-        #[cfg(feature = "verbose_modules")]
-        {
-            info!("<b>MODULE {}</>", module["id"].as_i64().unwrap());
-            info!("  |_ type: {}</>", module_type);
-            let out_to = module["output-to"].as_i64().unwrap();
-            info!("  |_ output to module: {}</>", out_to);
-            info!("  |_ config");
-            info!("     |_ name: {}", name.unwrap_or("not defined"));
-
-            println!();
-        }
     }
-
-    info!("<b>Filling buffer</>");
 
     let first_module_index = module_chain.iter().find_map(|(&index, cell)| {
         if cell.to_module == -1 {
@@ -150,20 +140,20 @@ pub fn module_chain_from_yaml(file: &str, buffer_length: usize) -> Vec<f32> {
 
     let mut current_module = module_chain.get(&first_module_index).unwrap();
 
-    info!("Module found: {:?}", current_module.to_module);
-
-    info!("<b>Creating buffer</>");
+    info!("<b>Creating buffer.</>");
     let mut buffer: Vec<f32> = vec![0.0f32; buffer_length as usize];
 
     // TODO REMOVE (PRINTS ALL ELEMENTS)
-    for (&index, cell) in module_chain.iter() {
-        info!("index: {}", index);
-        info!("  |_ name: {}", cell.module.get_name());
-    }
+    // for (&index, cell) in module_chain.iter() {
+    //     info!("index: {}", index);
+    //     info!("  |_ name: {}", cell.module.get_name());
+    // }
 
+    info!("<b>Filling buffer:</>\n");
     let mut buffer =
         generate_from_module_chain(&mut module_chain, first_module_index, buffer_length);
 
+    exit(0);
     return buffer;
 }
 
@@ -186,9 +176,23 @@ fn generate_from_module_chain(
         buffer
     } else {
         // GENERATOR MODULE
+
         let mut buffer = vec![0.0f32; buffer_size];
         let mut current_module = module_chain.remove(&current_pos).unwrap();
+        let mut aux_list: Vec<AuxiliaryInput> = Vec::new();
+        for aux in current_module.auxiliaries {
+            let aux_buffer = generate_from_module_chain(module_chain, aux.from_module, buffer_size);
+            let aux = AuxInputBuilder::new(&aux.linked_with, aux_buffer)
+                .build()
+                .unwrap();
+
+            aux_list.push(aux);
+        }
+
         current_module.module.fill_buffer(&mut buffer);
         buffer
     };
 }
+
+// TODO
+fn check_duplicated() {}

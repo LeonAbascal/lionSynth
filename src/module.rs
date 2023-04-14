@@ -41,7 +41,6 @@ pub trait Module {
     ) {
         #[cfg(feature = "verbose_modules")]
         {
-            println!();
             info!("<b>Running module <cyan>{}</>", self.get_name());
         }
 

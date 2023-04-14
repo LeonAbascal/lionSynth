@@ -33,3 +33,15 @@ layout:
       output-to: 1
       config:
         name: "#1"
+      auxiliaries:
+        - aux:
+            id-from: 4
+            linked-with: amplitude
+            max: 1
+            min: -1
+  - module:
+      id: 4
+      type: oscillator
+      output-to: 0
+      config:
+        name: "#3"
