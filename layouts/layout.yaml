@@ -1,5 +1,5 @@
 ---
-version: 0.3
+version: 0.4
 
 # STRINGS
 # For the majority of strings there is no need to add quotation marks.
@@ -16,7 +16,7 @@ layout:
   - module:
       id: 0
       type: oscillator
-      output-to: -1 # todo evaluate
+      os-out: true
       # input-from: -1
       config:
         name: modulator
@@ -39,7 +39,6 @@ layout:
   - module:
       id: 1
       type: oscillator
-      output-to: 0 # todo evaluate
       # no input from in a generator module
       config:
         name: carrier

@@ -11,7 +11,6 @@ use yaml_rust::{YamlEmitter, YamlLoader};
 struct ChainCell {
     id: i64,
     from_module: Option<i64>,
-    to_module: i64,
     module: Box<dyn Module>,
     auxiliaries: Vec<AuxInfo>,
 }
@@ -36,7 +35,7 @@ pub fn module_chain_from_yaml(file: &str, buffer_length: usize) -> Vec<f32> {
     let version = *&doc["version"].as_f64().unwrap_or(0.0);
     let layout = &doc["layout"];
 
-    if version != 0.3f64 {
+    if version != 0.4f64 {
         error!("<b>Please use the <red>latest YAML</> <b>version.</>");
         panic!();
     } else {
@@ -48,12 +47,37 @@ pub fn module_chain_from_yaml(file: &str, buffer_length: usize) -> Vec<f32> {
 
     info!("<b>Creating module chain.</>");
     let mut module_chain: HashMap<i64, ChainCell> = HashMap::new();
+    let mut first_module_index: Option<i64> = None;
 
     for module in layout.clone().into_iter() {
         let module = &module["module"];
         let module_type = &module["type"];
-        let module_id = module["id"].as_i64().unwrap();
+        let module_id = module["id"].as_i64();
 
+        // ID CHECKS
+        if module_id.is_none() {
+            error!("<b>Missing module <red>ID</><b>.</>");
+            panic!();
+        }
+        let module_id = module_id.unwrap();
+
+        if module_chain.contains_key(&module_id) {
+            error!("<b>Found a <red>duplicated ID</> <b>value.</>");
+            panic!();
+        }
+
+        // FIRST BOOL
+        if let Some(value) = module["os-out"].as_bool() {
+            if value {
+                if first_module_index.is_some() {
+                    error!("<b>Two modules have been defined as <red>Operative System output</><b>. There can only be <cyan>one at a time</><b>.</>");
+                    panic!();
+                }
+                first_module_index = Some(module_id);
+            }
+        }
+
+        // TYPE
         if module_type.as_str().is_none() {
             error!("<b>Module <red>type</> <b>not specified.</>");
             panic!();
@@ -87,8 +111,6 @@ pub fn module_chain_from_yaml(file: &str, buffer_length: usize) -> Vec<f32> {
             }
         };
 
-        let mut id_to = (&module["output-to"]).as_i64();
-
         // ADD AUXILIARIES
         let mut auxiliaries: Vec<AuxInfo> = Vec::new();
         for aux in module["auxiliaries"].clone().into_iter() {
@@ -102,37 +124,19 @@ pub fn module_chain_from_yaml(file: &str, buffer_length: usize) -> Vec<f32> {
             });
         }
 
-        match id_to {
-            Some(id_to) => {
-                module_chain.insert(
-                    module_id,
-                    ChainCell {
-                        id: module_id,
-                        from_module: (&module["input-from"]).as_i64(),
-                        to_module: (&module)["output-to"].as_i64().unwrap(),
-                        module: generated_module,
-                        auxiliaries,
-                    },
-                );
-            }
-
-            _ => {
-                error!("<b>Missing module <red>ID</><b>.</>");
-                panic!();
-            }
-        }
+        module_chain.insert(
+            module_id,
+            ChainCell {
+                id: module_id,
+                from_module: (&module["input-from"]).as_i64(),
+                module: generated_module,
+                auxiliaries,
+            },
+        );
     }
 
-    let first_module_index = module_chain.iter().find_map(|(&index, cell)| {
-        if cell.to_module == -1 {
-            Some(index)
-        } else {
-            None
-        }
-    });
-
     if first_module_index.is_none() {
-        error!("<b>No module linked to <red>Operating System</><b>. Set ID -1 to the last module in the chain.</>");
+        error!("<b>No module linked to <red>Operating System</><b>. Add field 'os-out: true' to the last element in the chain.</>");
         panic!();
     }
 
@@ -143,35 +147,27 @@ pub fn module_chain_from_yaml(file: &str, buffer_length: usize) -> Vec<f32> {
     info!("<b>Creating buffer.</>");
     let mut buffer: Vec<f32> = vec![0.0f32; buffer_length as usize];
 
-    // TODO REMOVE (PRINTS ALL ELEMENTS)
-    // for (&index, cell) in module_chain.iter() {
-    //     info!("index: {}", index);
-    //     info!("  |_ name: {}", cell.module.get_name());
-    // }
-
     info!("<b>Filling buffer:</>\n");
-    let mut buffer =
-        generate_from_module_chain(&mut module_chain, first_module_index, buffer_length);
+    let mut buffer = fill_buffers(&mut module_chain, first_module_index, buffer_length);
 
-    exit(0);
-    return buffer;
+    buffer
 }
 
-// TODO auxiliaries
-fn generate_from_module_chain(
+// TODO auxiliaries for not origin
+fn fill_buffers(
     module_chain: &mut HashMap<i64, ChainCell>,
     current_pos: i64,
     buffer_size: usize,
 ) -> Vec<f32> {
-    let current_module_borrow = module_chain.get(&current_pos).unwrap();
-    let condition = current_module_borrow.from_module.is_some();
+    let current_borrowed_module = module_chain.get(&current_pos).unwrap();
+    let condition = current_borrowed_module.from_module.is_some();
 
     return if condition {
         // LINKER MODULE
 
-        let next_id = current_module_borrow.from_module.unwrap();
+        let next_id = current_borrowed_module.from_module.unwrap();
         let mut current_module = module_chain.remove(&current_pos).unwrap();
-        let mut buffer = generate_from_module_chain(module_chain, next_id, buffer_size);
+        let mut buffer = fill_buffers(module_chain, next_id, buffer_size);
         current_module.module.fill_buffer(&mut buffer);
         buffer
     } else {
@@ -181,7 +177,7 @@ fn generate_from_module_chain(
         let mut current_module = module_chain.remove(&current_pos).unwrap();
         let mut aux_list: Vec<AuxiliaryInput> = Vec::new();
         for aux in current_module.auxiliaries {
-            let aux_buffer = generate_from_module_chain(module_chain, aux.from_module, buffer_size);
+            let aux_buffer = fill_buffers(module_chain, aux.from_module, buffer_size);
             let aux = AuxInputBuilder::new(&aux.linked_with, aux_buffer)
                 .build()
                 .unwrap();
@@ -195,4 +191,4 @@ fn generate_from_module_chain(
 }
 
 // TODO
-fn check_duplicated() {}
+fn check_duplicated_ids() {}
