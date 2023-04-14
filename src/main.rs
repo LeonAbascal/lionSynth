@@ -1,5 +1,6 @@
 mod back_end;
 mod bundled_modules;
+mod layout_yaml;
 mod module;
 
 use anyhow::Chain;
@@ -17,6 +18,7 @@ use simplelog::__private::paris::Logger;
 use simplelog::*;
 
 // MY STUFF
+use crate::layout_yaml::module_chain_from_yaml;
 use crate::module::AuxInputBuilder;
 use back_end::{get_preferred_config, Channels};
 use bundled_modules::debug::{OscDebug, PassTrough};
@@ -45,10 +47,11 @@ fn main() -> Result<(), anyhow::Error> {
     // FILL BUFFER
     info!("<b>Running <blue>demo program</>");
     let signal_duration: i32 = 1000; // milliseconds
-    let mut stream_buffer = module_chain(signal_duration * SAMPLE_RATE / 1000);
+    let buffer_size: usize = (signal_duration * SAMPLE_RATE / 1000) as usize;
+    // let mut stream_buffer = module_chain(buffer_size);
 
+    let mut stream_buffer = module_chain_from_yaml("test.yaml", buffer_size); // TODO TESTING
     output_wav(stream_buffer.clone(), "test.wav");
-    module_chain_from_yaml((signal_duration * SAMPLE_RATE / 1000) as usize); // TODO TESTING
 
     // get default host
     let host = cpal::default_host();
@@ -134,193 +137,7 @@ fn write_silence<T: Sample>(data: &mut [T], _: &cpal::OutputCallbackInfo) {
     }
 }
 
-fn module_chain_from_yaml(buffer_length: usize) -> Vec<f32> {
-    struct ChainCell {
-        id: i64,
-        from_module: Option<i64>,
-        to_module: i64,
-        module: Box<dyn Module>,
-        auxiliaries: Vec<AuxInfo>,
-    }
-
-    struct AuxInfo {
-        from_module: i64,
-        linked_with: String,
-        max: Option<i64>,
-        min: Option<i64>,
-    }
-
-    use yaml_rust::{YamlEmitter, YamlLoader};
-    println!(); // Logger cleanspace
-
-    info!("<b>Loading data from <red>layouts/layout.yaml</><b>.</>");
-    let yaml = &fs::read_to_string("layouts/test.yaml").unwrap();
-
-    let doc = YamlLoader::load_from_str(yaml).unwrap();
-    let doc = &doc[0];
-
-    let version = *&doc["version"].as_f64().unwrap_or(0.0);
-    let layout = &doc["layout"];
-
-    if version != 0.3f64 {
-        error!("<b>Please use the <red>latest YAML</> <b>version.</>");
-        panic!();
-    } else {
-        info!("<b>Using <blue>version</> <b>{}</>", version);
-    }
-
-    info!("<b>Creating module chain.</>");
-    let mut module_chain: HashMap<i64, ChainCell> = HashMap::new();
-
-    for module in layout.clone().into_iter() {
-        let module = &module["module"];
-        let module_type = &module["type"];
-        let module_id = module["id"].as_i64().unwrap();
-
-        if module_type.as_str().is_none() {
-            error!("<b>Module <red>type</> <b>not specified.</>");
-            panic!();
-        }
-
-        let module_type = module_type.as_str().unwrap();
-        let config = &module["config"];
-        let name = config["name"].as_str();
-
-        let mut generated_module: Box<dyn Module> = match module_type {
-            "oscillator" => {
-                let sample_rate = config["sample_rate"].as_i64();
-                let amp = config["amplitude"].as_f64();
-                let freq = config["frequency"].as_f64();
-                let phase = config["phase"].as_f64();
-
-                Box::new(
-                    OscillatorBuilder::new()
-                        .with_all_yaml_fmt(name, sample_rate, amp, freq, phase)
-                        .build()
-                        .unwrap(),
-                )
-            }
-
-            "osc_debug" => Box::new(OscDebug::new(SAMPLE_RATE)),
-            "pass_through" => Box::new(PassTrough::new()),
-
-            _ => {
-                error!("<b>Module type <red>not found</><b>. ID: {}</>", module_id);
-                continue;
-            }
-        };
-
-        let mut id_to = (&module["output-to"]).as_i64();
-
-        // ADD AUXILIARIES
-        let mut auxiliaries: Vec<AuxInfo> = Vec::new();
-        for aux in module["auxiliaries"].clone().into_iter() {
-            let aux = &aux["aux"];
-
-            auxiliaries.push(AuxInfo {
-                from_module: aux["id-from"].as_i64().unwrap(),
-                linked_with: aux["linked-with"].as_str().unwrap().to_string(),
-                max: aux["max"].as_i64(),
-                min: aux["min"].as_i64(),
-            });
-        }
-
-        match id_to {
-            Some(id_to) => {
-                module_chain.insert(
-                    module_id,
-                    ChainCell {
-                        id: module_id,
-                        from_module: (&module["input-from"]).as_i64(),
-                        to_module: (&module)["output-to"].as_i64().unwrap(),
-                        module: generated_module,
-                        auxiliaries,
-                    },
-                );
-            }
-
-            _ => {
-                error!("<b>Missing module <red>ID</><b>.</>");
-                panic!();
-            }
-        }
-
-        #[cfg(feature = "verbose_modules")]
-        {
-            info!("<b>MODULE {}</>", module["id"].as_i64().unwrap());
-            info!("  |_ type: {}</>", module_type);
-            let out_to = module["output-to"].as_i64().unwrap();
-            info!("  |_ output to module: {}</>", out_to);
-            info!("  |_ config");
-            info!("     |_ name: {}", name.unwrap_or("not defined"));
-
-            println!();
-        }
-    }
-
-    info!("<b>Filling buffer</>");
-
-    let first_module_index = module_chain.iter().find_map(|(&index, cell)| {
-        if cell.to_module == -1 {
-            Some(index)
-        } else {
-            None
-        }
-    });
-
-    if first_module_index.is_none() {
-        error!("<b>No module linked to <red>Operating System</><b>. Set ID -1 to the last module in the chain.</>");
-        panic!();
-    }
-
-    let first_module_index = first_module_index.unwrap();
-
-    let mut current_module = module_chain.get(&first_module_index).unwrap();
-
-    info!("Module found: {:?}", current_module.to_module);
-
-    info!("<b>Creating buffer</>");
-    let mut buffer: Vec<f32> = vec![0.0f32; buffer_length as usize];
-
-    // TODO REMOVE (PRINTS ALL ELEMENTS)
-    for (&index, cell) in module_chain.iter() {
-        info!("index: {}", index);
-        info!("  |_ name: {}", cell.module.get_name());
-    }
-
-    let mut buffer =
-        generate_from_module_chain(&mut module_chain, first_module_index, buffer_length);
-
-    return buffer;
-
-    // TODO auxiliaries
-    fn generate_from_module_chain(
-        module_chain: &mut HashMap<i64, ChainCell>,
-        current_pos: i64,
-        buffer_size: usize,
-    ) -> Vec<f32> {
-        let current_module_borrow = module_chain.get(&current_pos).unwrap();
-        let condition = current_module_borrow.from_module.is_some();
-
-        return if condition {
-            // LINKER MODULE
-
-            let next_id = current_module_borrow.from_module.unwrap();
-            let mut current_module = module_chain.remove(&current_pos).unwrap();
-            let mut buffer = generate_from_module_chain(module_chain, next_id, buffer_size);
-            current_module.module.fill_buffer(&mut buffer);
-            buffer
-        } else {
-            // GENERATOR MODULE
-            let mut buffer = vec![0.0f32; buffer_size];
-            let mut current_module = module_chain.remove(&current_pos).unwrap();
-            current_module.module.fill_buffer(&mut buffer);
-            buffer
-        };
-    }
-}
-
-fn module_chain(buffer_length: i32) -> Vec<f32> {
+fn module_chain(buffer_length: usize) -> Vec<f32> {
     // Buffer initialization (1 sec = 44100 samples)
     // let buffer_length = 20;
     let mut buffer: Vec<f32> = vec![0.0; buffer_length as usize];

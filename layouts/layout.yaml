@@ -1,6 +1,16 @@
 ---
 version: 0.3
 
+# STRINGS
+# For the majority of strings there is no need to add quotation marks.
+# Nonetheless, if you want a number as string field or starting with it,
+# don't forget to specify the quotes.
+# For example: "1" (correct) instead of 1 (incorrect)
+
+# FLOATING POINT NUMBERS
+# If you want fields to be parsed as floats, always add the point sign.
+# For example: 1.0 (parsed as f64) instead of 1 (parsed as i64)
+
 layout:
   # An example with all parameters set
   - module:
