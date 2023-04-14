@@ -1,0 +1,26 @@
+---
+version: 0.4
+
+layout:
+  - module:
+      id: 0
+      type: pass_through
+      os-out: true
+      input-from: 1
+  - module:
+      id: 1
+      type: oscillator
+      config:
+        name: test
+        frequency: 20.0
+      auxiliaries:
+        - aux:
+            from-id: 2
+            linked-with: frequency
+            max: 20
+            min: 10
+  - module:
+      id: 2
+      type: oscillator
+      config:
+        name: carrier

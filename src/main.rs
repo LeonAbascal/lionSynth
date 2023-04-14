@@ -1,11 +1,15 @@
 mod back_end;
 mod bundled_modules;
+mod layout_yaml;
 mod module;
 
+use anyhow::Chain;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{Device, FromSample, Sample, SampleFormat, SampleRate, StreamConfig};
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
+use std::process::{exit, id};
 use std::thread::sleep;
 use std::time::Duration;
 
@@ -14,6 +18,7 @@ use simplelog::__private::paris::Logger;
 use simplelog::*;
 
 // MY STUFF
+use crate::layout_yaml::module_chain_from_yaml;
 use crate::module::AuxInputBuilder;
 use back_end::{get_preferred_config, Channels};
 use bundled_modules::debug::{OscDebug, PassTrough};
@@ -31,10 +36,10 @@ fn print_type_of<T>(_: &T) {
 fn main() -> Result<(), anyhow::Error> {
     // LOGGER INIT
     TermLogger::init(
-        simplelog::LevelFilter::Debug,
-        simplelog::Config::default(),
-        simplelog::TerminalMode::Mixed,
-        simplelog::ColorChoice::Auto,
+        LevelFilter::Debug,
+        Config::default(),
+        TerminalMode::Mixed,
+        ColorChoice::Auto,
     )
     .expect("Failed to start simplelog");
     let mut logger = Logger::new();
@@ -42,8 +47,10 @@ fn main() -> Result<(), anyhow::Error> {
     // FILL BUFFER
     info!("<b>Running <blue>demo program</>");
     let signal_duration: i32 = 1000; // milliseconds
-    let mut stream_buffer = module_chain(signal_duration * SAMPLE_RATE / 1000);
+    let buffer_size: usize = (signal_duration * SAMPLE_RATE / 1000) as usize;
+    // let mut stream_buffer = module_chain(buffer_size);
 
+    let mut stream_buffer = module_chain_from_yaml("test.yaml", buffer_size);
     output_wav(stream_buffer.clone(), "test.wav");
 
     // get default host
@@ -130,7 +137,7 @@ fn write_silence<T: Sample>(data: &mut [T], _: &cpal::OutputCallbackInfo) {
     }
 }
 
-fn module_chain(buffer_length: i32) -> Vec<f32> {
+fn module_chain(buffer_length: usize) -> Vec<f32> {
     // Buffer initialization (1 sec = 44100 samples)
     // let buffer_length = 20;
     let mut buffer: Vec<f32> = vec![0.0; buffer_length as usize];
@@ -160,7 +167,7 @@ fn module_chain(buffer_length: i32) -> Vec<f32> {
         .unwrap();
 
     // carrier.fill_buffer_w_aux(&mut buffer, Some(vec![&mut aux]));
-    carrier.fill_buffer_w_aux(&mut buffer, None);
+    carrier.fill_buffer_w_aux(&mut buffer, Some(vec![&mut aux]));
 
     #[cfg(feature = "verbose_modules")]
     {
@@ -185,7 +192,6 @@ fn module_chain(buffer_length: i32) -> Vec<f32> {
 }
 
 fn output_wav(buffer: Vec<f32>, filename: &str) {
-    use hound;
     let spec = hound::WavSpec {
         channels: 1,
         sample_rate: 44100,

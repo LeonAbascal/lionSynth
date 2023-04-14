@@ -178,6 +178,43 @@ impl OscillatorBuilder {
         self
     }
 
+    pub fn with_all_yaml_fmt(
+        mut self,
+        name: Option<&str>,
+        sample_rate: Option<i64>,
+        amplitude: Option<f64>,
+        frequency: Option<f64>,
+        phase: Option<f64>,
+    ) -> Self {
+        let name = match name {
+            Some(x) => Some(x.to_string()),
+            None => None,
+        };
+        let sample_rate = match sample_rate {
+            Some(x) => Some(x as f32),
+            None => None,
+        };
+        let amplitude = match amplitude {
+            Some(x) => Some(x as f32),
+            None => None,
+        };
+        let frequency = match frequency {
+            Some(x) => Some(x as f32),
+            None => None,
+        };
+        let phase = match phase {
+            Some(x) => Some(x as f32),
+            None => None,
+        };
+
+        self.name = name;
+        self.sample_rate = sample_rate;
+        self.amplitude = amplitude;
+        self.frequency = frequency;
+        self.phase = phase;
+        self
+    }
+
     /// Tries to generate an Oscillator from the given configuration.
     ///
     /// # Default values:

@@ -1,0 +1,45 @@
+---
+version: 0.4
+
+# STRINGS
+# For the majority of strings there is no need to add quotation marks.
+# Nonetheless, if you want a number as string field or starting with it,
+# don't forget to specify the quotes.
+# For example: "1" (correct) instead of 1 (incorrect)
+
+# FLOATING POINT NUMBERS
+# If you want fields to be parsed as floats, always add the point sign.
+# For example: 1.0 (parsed as f64) instead of 1 (parsed as i64)
+
+layout:
+  # An example with all parameters set
+  - module:
+      id: 0
+      type: oscillator
+      os-out: true
+      # input-from: -1
+      config:
+        name: modulator
+        sample_rate: 44100
+        amplitude: 0.8
+        frequency: 440.0
+        phase: 0.2
+      auxiliaries:
+        - aux:
+            from-id: 1
+            linked-with: frequency
+            max: 20
+            min: 10
+        - aux:
+            from-id: 3
+            linked-with: amplitude
+            max: 1
+            min: 0
+  # An example with only compulsory parameters set
+  - module:
+      id: 1
+      type: oscillator
+      # no input from in a generator module
+      config:
+        name: carrier
+        frequency: 20
