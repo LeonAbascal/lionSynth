@@ -40,7 +40,7 @@ pub fn module_chain_from_yaml(file: &str, buffer_length: usize) -> Vec<f32> {
         panic!();
     } else {
         info!(
-            "<b>Using <magenta>YAML parsing</> version: <b><cyan>{}</>",
+            "<b>Using <magenta>YAML parsing</> <b>version: <b><cyan>{}</>",
             version
         );
     }

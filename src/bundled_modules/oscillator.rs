@@ -1,4 +1,4 @@
-use crate::module::{AuxiliaryInput, Module, Parameter, ParameterBuilder};
+use crate::module::{AuxiliaryInput, Module, ModuleClock, Parameter, ParameterBuilder};
 use crate::SAMPLE_RATE;
 use std::f32::consts::PI;
 use std::fmt;
@@ -36,7 +36,7 @@ use std::fmt::{write, Formatter};
 /// `t` gets calculated with the clock of the oscillator and the sample rate.
 pub struct Oscillator {
     /// Inner workings for time tracing
-    clock: f32,
+    clock: ModuleClock,
     /// Amount of samples in a second
     sample_rate: f32,
     /// Parameter list
@@ -47,7 +47,9 @@ pub struct Oscillator {
 
 impl Module for Oscillator {
     fn behaviour(&self, _in_data: f32) -> f32 {
-        ((self.clock * self.get_frequency() * 2.0 * PI / self.sample_rate) + self.get_phase()).sin()
+        ((self.clock.get_value() * self.get_frequency() * 2.0 * PI / self.sample_rate)
+            + self.get_phase())
+        .sin()
             * self.get_amplitude()
     }
 
@@ -59,12 +61,8 @@ impl Module for Oscillator {
         &mut self.parameters
     }
 
-    fn inc_clock(&mut self) {
-        self.clock = (self.clock + 1.0) % self.sample_rate;
-    }
-
-    fn get_clock(&self) -> f32 {
-        self.clock
+    fn get_clock(&mut self) -> &mut ModuleClock {
+        &mut self.clock
     }
 
     fn get_name(&self) -> String {
@@ -236,7 +234,7 @@ impl OscillatorBuilder {
 
         Ok(Oscillator {
             name,
-            clock: 0.0,
+            clock: ModuleClock::new(sample_rate as i32),
             sample_rate,
             parameters: vec![
                 ParameterBuilder::new("amplitude".to_string())
@@ -280,7 +278,7 @@ mod oscillator_builder_tests {
         let osc = OscillatorBuilder::new().build().unwrap();
 
         assert_eq!(osc.sample_rate, 44100.0, "Default sample mismatch");
-        assert_eq!(osc.clock, 0.0, "Clock mismatch");
+        assert_eq!(osc.clock.get_value(), 0.0, "Clock mismatch");
 
         let amp = (&osc).get_parameter("amplitude");
         let phase = (&osc).get_parameter("phase");
@@ -309,7 +307,7 @@ mod oscillator_builder_tests {
             .unwrap();
 
         assert_eq!(osc.sample_rate, 22000.0, "Sample mismatch");
-        assert_eq!(osc.clock, 0.0, "Clock mismatch");
+        assert_eq!(osc.clock.get_value(), 0.0, "Clock mismatch");
 
         let amp = (&osc).get_parameter("amplitude");
         let phase = (&osc).get_parameter("phase");

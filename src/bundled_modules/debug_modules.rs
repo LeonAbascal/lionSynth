@@ -1,13 +1,14 @@
-use crate::module::{AuxiliaryInput, Module, Parameter};
+use crate::module::{AuxiliaryInput, Module, ModuleClock, Parameter};
 use std::f32::consts::PI;
 
 // MODULES
 pub struct PassTrough {
     parameters: Vec<Parameter>,
+    clock: ModuleClock,
 }
 
 pub struct OscDebug {
-    clock: f32,
+    clock: ModuleClock,
     sample_rate: f32,
     parameters: Vec<Parameter>,
 }
@@ -26,9 +27,8 @@ impl Module for PassTrough {
         &mut self.parameters
     }
 
-    fn inc_clock(&mut self) {}
-    fn get_clock(&self) -> f32 {
-        0.0
+    fn get_clock(&mut self) -> &mut ModuleClock {
+        &mut self.clock
     }
 
     fn get_name(&self) -> String {
@@ -39,7 +39,7 @@ impl Module for PassTrough {
 impl Module for OscDebug {
     fn behaviour(&self, _: f32) -> f32 {
         let freq: f32 = 440.0;
-        (self.clock * freq * 2.0 * PI / self.sample_rate).sin()
+        (self.clock.get_value() * freq * 2.0 * PI / self.sample_rate).sin()
     }
 
     fn get_parameters(&self) -> &Vec<Parameter> {
@@ -50,11 +50,8 @@ impl Module for OscDebug {
         &mut self.parameters
     }
 
-    fn inc_clock(&mut self) {
-        self.clock = (self.clock + 1.0) % self.sample_rate;
-    }
-    fn get_clock(&self) -> f32 {
-        self.clock
+    fn get_clock(&mut self) -> &mut ModuleClock {
+        &mut self.clock
     }
 
     fn get_name(&self) -> String {
@@ -65,14 +62,17 @@ impl Module for OscDebug {
 // CONSTRUCTORS
 impl PassTrough {
     pub fn new() -> Self {
-        Self { parameters: vec![] }
+        Self {
+            parameters: vec![],
+            clock: ModuleClock::new(44100),
+        }
     }
 }
 
 impl OscDebug {
     pub fn new(sample_rate: i32) -> Self {
         Self {
-            clock: 0.0,
+            clock: ModuleClock::new(sample_rate),
             sample_rate: sample_rate as f32,
             parameters: vec![],
         }

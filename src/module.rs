@@ -10,6 +10,27 @@ pub struct LinkerModule {
     // TODO
 }
 
+pub struct ModuleClock {
+    sample_rate: f32,
+    tick: f32,
+}
+
+impl ModuleClock {
+    pub fn new(sample_rate: i32) -> Self {
+        Self {
+            sample_rate: sample_rate as f32,
+            tick: 0.0,
+        }
+    }
+
+    pub fn inc(&mut self) {
+        self.tick = (self.tick + 1.0) % self.sample_rate;
+    }
+    pub fn get_value(&self) -> f32 {
+        self.tick
+    }
+}
+
 // TODO: revisit
 /// Modules are the building blocks of a modular synthesizer, its essence. They are defined by
 /// their behavior which can be modified with [Parameter].
@@ -200,8 +221,11 @@ pub trait Module {
 
     /// Will define how the clock goes forward. Useful for timed operations. Must increase by one
     /// and start at zero to work properly with auxiliary inputs
-    fn inc_clock(&mut self); // TODO: consider making the clock common with an associated function (class method) or a sync-er structure in the main flow
-    fn get_clock(&self) -> f32; // TODO: remove? tick already enforces the clock in the struct
+    fn inc_clock(&mut self) {
+        self.get_clock().inc();
+    }
+
+    fn get_clock(&mut self) -> &mut ModuleClock; // TODO: remove? tick already enforces the clock in the struct
 
     // USEFUL FOR DEBUGGING
     fn get_name(&self) -> String;
