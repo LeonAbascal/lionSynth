@@ -5,8 +5,7 @@ use crate::SAMPLE_RATE;
 use simplelog::{error, info};
 use std::collections::HashMap;
 use std::fs;
-use std::process::exit;
-use yaml_rust::{YamlEmitter, YamlLoader};
+use yaml_rust::YamlLoader;
 
 struct ChainCell {
     id: i64,
@@ -18,8 +17,8 @@ struct ChainCell {
 struct AuxInfo {
     from_module: i64,
     linked_with: String,
-    max: Option<i64>,
-    min: Option<i64>,
+    max: Option<f32>,
+    min: Option<f32>,
 }
 
 pub fn module_chain_from_yaml(file: &str, buffer_length: usize) -> Vec<f32> {
@@ -87,7 +86,7 @@ pub fn module_chain_from_yaml(file: &str, buffer_length: usize) -> Vec<f32> {
         let config = &module["config"];
         let name = config["name"].as_str();
 
-        let mut generated_module: Box<dyn Module> = match module_type {
+        let generated_module: Box<dyn Module> = match module_type {
             "oscillator" => {
                 let sample_rate = config["sample_rate"].as_i64();
                 let amp = config["amplitude"].as_f64();
@@ -119,8 +118,8 @@ pub fn module_chain_from_yaml(file: &str, buffer_length: usize) -> Vec<f32> {
             auxiliaries.push(AuxInfo {
                 from_module: aux["from-id"].as_i64().unwrap(),
                 linked_with: aux["linked-with"].as_str().unwrap().to_string(),
-                max: aux["max"].as_i64(),
-                min: aux["min"].as_i64(),
+                max: aux["max"].as_f64().map(|value| value as f32),
+                min: aux["min"].as_f64().map(|value| value as f32),
             });
         }
 
@@ -142,13 +141,8 @@ pub fn module_chain_from_yaml(file: &str, buffer_length: usize) -> Vec<f32> {
 
     let first_module_index = first_module_index.unwrap();
 
-    let mut current_module = module_chain.get(&first_module_index).unwrap();
-
-    info!("<b>Creating buffer.</>");
-    let mut buffer: Vec<f32> = vec![0.0f32; buffer_length as usize];
-
     info!("<b>Filling buffer:</>\n");
-    let mut buffer = fill_buffers(&mut module_chain, first_module_index, buffer_length);
+    let buffer = fill_buffers(&mut module_chain, first_module_index, buffer_length);
 
     buffer
 }
@@ -168,17 +162,12 @@ fn fill_buffers(
     for aux in current_module.auxiliaries {
         let aux_buffer = fill_buffers(module_chain, aux.from_module, buffer_size);
         let aux = AuxInputBuilder::new(&aux.linked_with, aux_buffer)
+            .with_all_yaml(aux.max, aux.min)
             .build()
             .unwrap();
 
         aux_list.push(aux);
     }
-
-    let aux_list_ptr: Vec<&mut AuxiliaryInput> = aux_list.iter_mut().map(|aux| aux).collect();
-    let aux_list_ptr = match aux_list_ptr.len() {
-        0 => None,
-        _ => Some(aux_list_ptr),
-    };
 
     // GENERATE OR PROCESS BUFFER
     return if next_id.is_some() {
@@ -186,18 +175,14 @@ fn fill_buffers(
 
         let next_id = next_id.unwrap();
         let mut buffer = fill_buffers(module_chain, next_id, buffer_size);
-        current_module
-            .module
-            .fill_buffer_w_aux(&mut buffer, aux_list_ptr);
+        current_module.module.fill_buffer(&mut buffer, aux_list);
         buffer
     } else {
         // GENERATOR MODULE
 
         let mut buffer = vec![0.0f32; buffer_size];
 
-        current_module
-            .module
-            .fill_buffer_w_aux(&mut buffer, aux_list_ptr);
+        current_module.module.fill_buffer(&mut buffer, aux_list);
         buffer
     };
 }

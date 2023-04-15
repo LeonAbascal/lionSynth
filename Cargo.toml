@@ -8,7 +8,6 @@ edition = "2021"
 [features]
 default = ["verbose_modules"]
 verbose_modules = []
-module_values = []
 
 [dependencies]
 cpal = "0.15.0"

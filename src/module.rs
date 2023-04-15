@@ -1,6 +1,9 @@
 use crate::bundled_modules::OscillatorBuilder;
 use crate::SAMPLE_RATE;
-use simplelog::{info, warn, TermLogger};
+use log::error;
+use simplelog::{info, warn};
+use std::collections::HashMap;
+use yaml_rust::Yaml::Hash;
 
 /// A **linker module** is a module able to connect into another. An example of linker module
 /// would be an effect module or an [ADSR](https://en.wikipedia.org/wiki/Envelope_(music)) module.
@@ -10,34 +13,13 @@ pub struct LinkerModule {
     // TODO
 }
 
-pub struct ModuleClock {
-    sample_rate: f32,
-    tick: f32,
-}
-
-impl ModuleClock {
-    pub fn new(sample_rate: i32) -> Self {
-        Self {
-            sample_rate: sample_rate as f32,
-            tick: 0.0,
-        }
-    }
-
-    pub fn inc(&mut self) {
-        self.tick = (self.tick + 1.0) % self.sample_rate;
-    }
-    pub fn get_value(&self) -> f32 {
-        self.tick
-    }
-}
-
 // TODO: revisit
 /// Modules are the building blocks of a modular synthesizer, its essence. They are defined by
 /// their behavior which can be modified with [Parameter].
 ///
 /// # How it works
 /// Each module is able to receive and retrieve a buffer of any size. Data (samples) is represented
-/// in a [f32] format, and the module will modify it. For such, it will be calling the [behaviour](fn@Module::behaviour)
+/// in a [f32] format, and the module will modify it. For such, it will be calling the [behaviour](fn@Module::batch_behaviour)
 /// method, which is the only one you need to override. I do not recommend overriding the rest
 /// of the methods.
 ///
@@ -47,112 +29,115 @@ impl ModuleClock {
 ///
 /// # The parameters
 /// [Parameter] are what change the behaviour of the module in a specific moment.
+///
+/// # Real time vs batch processing
+/// Somehow, the difference among batch processing module and a real time processing module is
+/// the statefulness. The first will keep the values and the buffers until consumption (stateful).
+/// On the other hand, the second will calculate the value on a specific moment. The modules
+/// don't even remember the time of the clock.
 /// TODO: finish doc
 pub trait Module {
-    // fn get_sample(&self); // real time behaviour?
+    fn get_sample(&self, in_sample: f32, time: f32) -> f32 {
+        self.behaviour(in_sample, time)
+    }
+
+    fn get_sample_w_aux(
+        &mut self,
+        in_sample: f32,
+        time: f32,
+        auxiliaries: HashMap<String, f32>,
+    ) -> f32 {
+        self.update_parameters(auxiliaries);
+        self.behaviour(in_sample, time)
+    }
+
+    fn update_parameters(&mut self, auxiliaries: HashMap<String, f32>) {
+        for (tag, value) in auxiliaries {
+            let param = self.get_parameter_mutable(&tag);
+
+            match param {
+                Some(param) => param.set(value),
+                None => {
+                    error!("<b>Parameter tag <red>not found</><b>.</>")
+                }
+            }
+        }
+    }
 
     /// Fills the input buffer with new information. It may generate or modify the buffer.
     ///
     /// It also sets the clock forward and calls every function that needs to be updated on every
-    /// tick, such as the [behavior](fn@Module::behaviour) or the update of the parameters.
-
+    /// tick, such as the [behavior](fn@Module::batch_behaviour) or the update of the parameters.
+    /// # Returns
+    /// The last value of the clock.
     // TODO stereo
-    fn fill_buffer_w_aux(
-        &mut self,
-        buffer: &mut Vec<f32>,
-        auxiliaries: Option<Vec<&mut AuxiliaryInput>>,
-    ) {
+    fn fill_buffer(&mut self, buffer: &mut Vec<f32>, mut auxiliaries: Vec<AuxiliaryInput>) -> f32 {
         #[cfg(feature = "verbose_modules")]
         {
             info!("<b>Running module <cyan>{}</>", self.get_name());
         }
 
+        // TODO modularize this function not to reimplement the unecessary.
+        // maybe receive a closure with popping the values?
         warn!("<b>A <u>custom implementation</><b> for buffer filling with auxiliary inputs is recommended for better <yellow>performance</><b>.</>");
 
-        // AUXILIARY INPUTS MANAGEMENT STARTS HERE
-        // Map parameters
-        let mut temp_aux: Vec<Option<AuxiliaryInput>> =
-            Vec::with_capacity(self.get_parameter_count());
-
-        if let Some(auxiliaries) = auxiliaries {
-            for param in self.get_parameters() {
-                if let Some(x) = auxiliaries.iter().find(|aux| aux.tag == param.tag) {
-                    temp_aux.push(Some((**x).clone()));
-                } else {
-                    temp_aux.push(None);
-                }
-            }
-        }
+        let mut clock = Clock::new(44100); // TODO add get_sample_rate to Module trait
 
         #[cfg(feature = "verbose_modules")]
         {
-            info!("<b>Auxiliary list: {} items</>", temp_aux.len());
-            for item in temp_aux.iter() {
-                if item.is_none() {
-                    info!("  |_ <red>No item</>");
-                } else {
-                    info!("  |_ <green>{} aux found</>", item.as_ref().unwrap().tag);
-                }
+            info!("<b>Auxiliary list: {} items</>", auxiliaries.len());
+            for aux in auxiliaries.iter() {
+                info!("  |_ <green>{} aux found</>", aux.get_tag());
             }
             println!();
         }
 
-        // Create closure
-        let mut pop_auxiliaries = move || -> Vec<Option<f32>> {
-            let mut values = Vec::with_capacity((&temp_aux).len());
+        // We reverse the auxiliary order because we are popping.
+        // We want always the first element of the vector, nonetheless,
+        // popping is faster than removing from the beginning.
+        // As we don't need to access both ends of the vector, it is
+        // easier just to reverse it.
+        auxiliaries.reverse();
+        let mut pop_auxiliaries = move || {
+            let result: HashMap<String, f32>;
 
-            for item in temp_aux.iter_mut() {
-                match item {
-                    Some(x) => values.push(item.as_mut().unwrap().pop()),
-                    None => values.push(None),
-                }
-            }
+            let mut prev_value = 0.0f32; // To keep the previous value
+            result = auxiliaries
+                .iter_mut()
+                .map(|aux| {
+                    let tag = aux.tag.clone();  // Gets the parameter tag is associated with 
+                    let value = match aux.pop() { // Gets the next sample in the vector
 
-            values
+                        Some(value) => { prev_value= value; value },
+                        None => {
+                            error!("<b>Values of auxiliary list <red>exhausted</><b>. Is there a list smaller than the other?</>");
+                            prev_value // Returns the previous value
+                        }
+                    };
+
+                    (tag, value) // Returns the generated pair
+
+                })
+                .collect();
+
+            result
         };
-        // AUXILIARY INPUTS MANAGEMENT ENDS HERE
 
-        #[cfg(feature = "module_values")]
-        let mut count = 0;
+        buffer.iter_mut().for_each(|sample| {
+            self.update_parameters(pop_auxiliaries());
+            *sample = self.get_sample(*sample, clock.inc())
+        });
 
-        for item in buffer {
-            // Pre-processing operations
-            // Buffer processing
-            *item = self.behaviour(*item);
-
-            let parameters = self.get_parameters_mutable();
-            let mut new_values = pop_auxiliaries();
-            new_values.reverse(); // We reverse it because later we use pop function
-
-            for parameter in parameters {
-                let previous_value = parameter.get_value();
-
-                match new_values.pop().unwrap_or(None) {
-                    Some(new_value) => {
-                        #[cfg(feature = "module_values")]
-                        info!(
-                            "<b>Updating parameter <blue>{}</> <b>with {}</>",
-                            parameter.tag, new_value
-                        );
-                        parameter.set(new_value)
-                    }
-                    None => parameter.set(previous_value),
-                }
-            }
-
-            // POST-PROCESSING OPERATIONS
-            self.inc_clock();
-
-            #[cfg(feature = "module_values")]
-            {
-                count = (count + 1) % 10;
-                info!("<b>[ {} ]</> {}", count, item);
-            }
-        }
+        clock.get_value()
     }
 
-    fn fill_buffer(&mut self, buffer: &mut Vec<f32>) {
-        self.fill_buffer_w_aux(buffer, None);
+    fn fill_buffer_at(
+        &mut self,
+        buffer: &mut Vec<f32>,
+        start_at: f32,
+        mut auxiliaries: Vec<AuxiliaryInput>,
+    ) {
+        // TODO
     }
 
     /// Defines the behaviour of the module. Is it going to generate data? Is it going to clip the
@@ -162,7 +147,7 @@ pub trait Module {
     /// * `in_data`: the sample to modify, if any. Won't use it if creating a generator module.
     /// # Returns
     /// A generated or modified sample.
-    fn behaviour(&self, in_data: f32) -> f32;
+    fn behaviour(&self, in_data: f32, time: f32) -> f32;
 
     /// Adds a parameter to the list of parameters. If the tag is already in the list,
     /// the operation gets rejected.
@@ -218,14 +203,6 @@ pub trait Module {
     fn get_parameter_count(&self) -> usize {
         self.get_parameters().len()
     }
-
-    /// Will define how the clock goes forward. Useful for timed operations. Must increase by one
-    /// and start at zero to work properly with auxiliary inputs
-    fn inc_clock(&mut self) {
-        self.get_clock().inc();
-    }
-
-    fn get_clock(&mut self) -> &mut ModuleClock; // TODO: remove? tick already enforces the clock in the struct
 
     // USEFUL FOR DEBUGGING
     fn get_name(&self) -> String;
@@ -521,6 +498,12 @@ impl AuxInputBuilder {
         self
     }
 
+    pub fn with_all_yaml(mut self, max: Option<f32>, min: Option<f32>) -> Self {
+        self.min = min;
+        self.max = max;
+        self
+    }
+
     /// Generates an [AuxiliaryInput] from the values specified.
     pub fn build(self) -> Result<AuxiliaryInput, String> {
         let max = self.max.unwrap_or(1.0);
@@ -536,6 +519,35 @@ impl AuxInputBuilder {
             max,
             min,
         })
+    }
+}
+
+pub struct Clock {
+    tick: f32,
+    sample_rate: f32,
+}
+
+impl Clock {
+    pub fn new(sample_rate: i32) -> Self {
+        Self {
+            tick: 0.0,
+            sample_rate: sample_rate as f32,
+        }
+    }
+
+    pub fn get_value(&self) -> f32 {
+        self.tick
+    }
+
+    pub fn post_inc(&mut self) -> f32 {
+        self.tick = (self.tick + 1.0) % self.sample_rate;
+        self.tick
+    }
+
+    pub fn inc(&mut self) -> f32 {
+        let prev = self.tick;
+        self.tick = (self.tick + 1.0) % self.sample_rate;
+        prev
     }
 }
 

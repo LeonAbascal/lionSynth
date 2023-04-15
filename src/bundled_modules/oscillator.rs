@@ -1,8 +1,6 @@
-use crate::module::{AuxiliaryInput, Module, ModuleClock, Parameter, ParameterBuilder};
+use crate::module::{Module, Parameter, ParameterBuilder};
 use crate::SAMPLE_RATE;
 use std::f32::consts::PI;
-use std::fmt;
-use std::fmt::{write, Formatter};
 
 /// The oscillator is the genesis of the chain. It does generate a raw signal
 /// following certain properties defined by its attributes.
@@ -33,10 +31,8 @@ use std::fmt::{write, Formatter};
 /// `φ` the phase and
 /// `f` the frequency.
 ///
-/// `t` gets calculated with the clock of the oscillator and the sample rate.
+/// `t` the time given by a coordinator entity.
 pub struct Oscillator {
-    /// Inner workings for time tracing
-    clock: ModuleClock,
     /// Amount of samples in a second
     sample_rate: f32,
     /// Parameter list
@@ -46,10 +42,8 @@ pub struct Oscillator {
 }
 
 impl Module for Oscillator {
-    fn behaviour(&self, _in_data: f32) -> f32 {
-        ((self.clock.get_value() * self.get_frequency() * 2.0 * PI / self.sample_rate)
-            + self.get_phase())
-        .sin()
+    fn behaviour(&self, _in_data: f32, time: f32) -> f32 {
+        ((time * self.get_frequency() * 2.0 * PI / self.sample_rate) + self.get_phase()).sin()
             * self.get_amplitude()
     }
 
@@ -59,10 +53,6 @@ impl Module for Oscillator {
 
     fn get_parameters_mutable(&mut self) -> &mut Vec<Parameter> {
         &mut self.parameters
-    }
-
-    fn get_clock(&mut self) -> &mut ModuleClock {
-        &mut self.clock
     }
 
     fn get_name(&self) -> String {
@@ -130,7 +120,6 @@ pub struct OscillatorBuilder {
     frequency: Option<f32>,
     amplitude: Option<f32>,
     phase: Option<f32>,
-    parameters: Option<Vec<Parameter>>,
     name: Option<String>,
 }
 
@@ -143,7 +132,6 @@ impl OscillatorBuilder {
             frequency: None,
             amplitude: None,
             phase: None,
-            parameters: None,
         }
     }
 
@@ -234,7 +222,6 @@ impl OscillatorBuilder {
 
         Ok(Oscillator {
             name,
-            clock: ModuleClock::new(sample_rate as i32),
             sample_rate,
             parameters: vec![
                 ParameterBuilder::new("amplitude".to_string())

@@ -5,6 +5,7 @@ use cpal::traits::DeviceTrait;
 use cpal::SupportedOutputConfigs;
 use cpal::{Device, SampleFormat, SampleRate, SupportedStreamConfig, SupportedStreamConfigRange};
 use simplelog::info;
+use std::fs;
 /// Looks up for a supported config with a specific sample format.
 ///
 /// # Arguments
@@ -155,4 +156,41 @@ impl Channels {
             Self::Multi(x) => x,
         }
     }
+}
+
+pub fn output_wav(buffer: Vec<f32>, filename: &str) {
+    let spec = hound::WavSpec {
+        channels: 1,
+        sample_rate: 44100,
+        bits_per_sample: 16,
+        sample_format: hound::SampleFormat::Int,
+    };
+
+    info!("<b>Running <magenta>hound</> <b>to generate a wav file.</>");
+    info!("  <b>|_ Channels: <cyan>{}</>", spec.channels);
+    info!("  <b>|_ Bits per sample: <cyan>{}</>", spec.bits_per_sample);
+    info!(
+        "  <b>|_ Sample format: {}</>",
+        match spec.sample_format {
+            hound::SampleFormat::Int => "<yellow>int",
+            hound::SampleFormat::Float => "<cyan>float",
+        }
+    );
+
+    let subdir = "exports".to_string();
+    info!("  <b>|_ Export directory: <green>.{}/</>", subdir);
+    info!("  <b>|_ File name: <green>{}</>", filename);
+
+    fs::create_dir_all(&subdir).unwrap();
+    let filename = subdir + "/" + filename;
+
+    let mut test_writer = hound::WavWriter::create(filename, spec).unwrap();
+    let amplitude = i16::MAX as f32;
+    for sample in buffer {
+        test_writer
+            .write_sample((amplitude * sample) as i16)
+            .unwrap();
+    }
+
+    test_writer.finalize().unwrap();
 }

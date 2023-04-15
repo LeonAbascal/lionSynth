@@ -3,13 +3,8 @@ mod bundled_modules;
 mod layout_yaml;
 mod module;
 
-use anyhow::Chain;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{Device, FromSample, Sample, SampleFormat, SampleRate, StreamConfig};
-use std::collections::HashMap;
-use std::fs;
-use std::path::Path;
-use std::process::{exit, id};
 use std::thread::sleep;
 use std::time::Duration;
 
@@ -18,9 +13,10 @@ use simplelog::__private::paris::Logger;
 use simplelog::*;
 
 // MY STUFF
+use crate::bundled_modules::Oscillator;
 use crate::layout_yaml::module_chain_from_yaml;
-use crate::module::AuxInputBuilder;
-use back_end::{get_preferred_config, Channels};
+use crate::module::{AuxInputBuilder, AuxiliaryInput};
+use back_end::{get_preferred_config, output_wav, Channels};
 use bundled_modules::debug::{OscDebug, PassTrough};
 use bundled_modules::OscillatorBuilder;
 use module::Module;
@@ -158,30 +154,23 @@ fn module_chain(buffer_length: usize) -> Vec<f32> {
     carrier.set_frequency(220.0);
     carrier.set_phase(1.0);
 
-    modulator.fill_buffer(&mut modulator_buffer);
+    modulator.fill_buffer(&mut modulator_buffer, vec![]);
 
-    let mut aux = AuxInputBuilder::new("frequency", modulator_buffer)
+    let aux = AuxInputBuilder::new("frequency", modulator_buffer)
         .with_max(20.0)
         .with_min(10.0)
         .build()
         .unwrap();
 
     // carrier.fill_buffer_w_aux(&mut buffer, Some(vec![&mut aux]));
-    carrier.fill_buffer_w_aux(&mut buffer, Some(vec![&mut aux]));
+    carrier.fill_buffer(&mut buffer, vec![aux]);
 
     #[cfg(feature = "verbose_modules")]
     {
         let mut module = PassTrough::new();
-        module.fill_buffer(&mut buffer);
+        module.fill_buffer(&mut buffer, vec![]);
     }
-    #[cfg(feature = "module_values")]
-    {
-        println!();
-        info!("<b>You have activated <magenta>Module Values</><b> feature.</>");
-        info!("<b>This feature will output the <blue>final value</><b> of the module on each iteration and the values of the <blue>auxiliary inputs</><b>.</>");
-        warn!("<b>This is a very <yellow><u>slow</><b> feature. I do only recommend using it with <blue><b>small buffers</>.");
-        println!();
-    }
+
     #[cfg(feature = "verbose_modules")]
     {
         info!("<b>You have activated <magenta>Verbose Modules</><b> feature.</>");
@@ -189,41 +178,4 @@ fn module_chain(buffer_length: usize) -> Vec<f32> {
         println!();
     }
     buffer
-}
-
-fn output_wav(buffer: Vec<f32>, filename: &str) {
-    let spec = hound::WavSpec {
-        channels: 1,
-        sample_rate: 44100,
-        bits_per_sample: 16,
-        sample_format: hound::SampleFormat::Int,
-    };
-
-    info!("<b>Running <magenta>hound</> <b>to generate a wav file.</>");
-    info!("  <b>|_ Channels: <cyan>{}</>", spec.channels);
-    info!("  <b>|_ Bits per sample: <cyan>{}</>", spec.bits_per_sample);
-    info!(
-        "  <b>|_ Sample format: {}</>",
-        match spec.sample_format {
-            hound::SampleFormat::Int => "<yellow>int",
-            hound::SampleFormat::Float => "<cyan>float",
-        }
-    );
-
-    let subdir = "exports".to_string();
-    info!("  <b>|_ Export directory: <green>.{}/</>", subdir);
-    info!("  <b>|_ File name: <green>{}</>", filename);
-
-    fs::create_dir_all(&subdir).unwrap();
-    let filename = subdir + "/" + filename;
-
-    let mut test_writer = hound::WavWriter::create(filename, spec).unwrap();
-    let amplitude = i16::MAX as f32;
-    for sample in buffer {
-        test_writer
-            .write_sample((amplitude * sample) as i16)
-            .unwrap();
-    }
-
-    test_writer.finalize().unwrap();
 }
