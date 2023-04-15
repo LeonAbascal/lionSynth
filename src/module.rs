@@ -1,3 +1,5 @@
+use crate::bundled_modules::OscillatorBuilder;
+use crate::SAMPLE_RATE;
 use simplelog::{info, warn, TermLogger};
 
 /// A **linker module** is a module able to connect into another. An example of linker module
@@ -271,18 +273,36 @@ impl Parameter {
     }
 }
 
-/// A builder pattern to create parameters in a modular fashion.
+/// A builder pattern to create parameters in a modular fashion. Check [Parameter] for all the
+/// information about the fields and how should it be used.
 /// # Example
-///
+/// ```rust
+/// // A parameter for changing the value of the frequency at any given moment.
+/// ParameterBuilder::new("frequency".to_string())
+///     .with_min(22000.0) // 22k Hz for the max
+///     .with_min(10.0) // 10  Hz for the min
+///     .with_step(10.0) // Increments from 10 to 10 Hz
+///     .with_default(440.0) // The value starting at is 440 Hz
+///     .build()
+///     .unwrap();
+/// ```
 pub struct ParameterBuilder {
+    /// Maximum value. Defaults on 1.0
     max: Option<f32>,
+    /// Minimum value. Defaults on 0.0
     min: Option<f32>,
+    /// Step value. Defaults on 0.1
     step: Option<f32>,
+    /// Default value. Defaults on 0.0
     default: Option<f32>,
+    /// Tag (name) of the filed. Serves as identifier and should not be duplicated.
     tag: String,
 }
 
 impl ParameterBuilder {
+    /// Creates a new builder with all values set at default.
+    ///
+    /// **Requires** the tag of the parameter, which servers as **identifier**.
     pub fn new(tag: String) -> Self {
         Self {
             max: None,
@@ -293,24 +313,31 @@ impl ParameterBuilder {
         }
     }
 
+    /// Sets the maximum value of the [Parameter].
     pub fn with_max(mut self, max: f32) -> Self {
         self.max = Some(max);
         self
     }
+
+    /// Sets the mimimum value of the [Parameter].
     pub fn with_min(mut self, min: f32) -> Self {
         self.min = Some(min);
         self
     }
+
+    /// Sets the step of the [Parameter].
     pub fn with_step(mut self, step: f32) -> Self {
         self.step = Some(step);
         self
     }
 
+    /// Sets the default value of the [Parameter].
     pub fn with_default(mut self, default: f32) -> Self {
         self.default = Some(default);
         self
     }
 
+    /// Generates a [Parameter] from the specified values. Performs some integrity checks.
     pub fn build(self) -> Result<Parameter, String> {
         let max = self.max.unwrap_or(1.0);
         let min = self.min.unwrap_or(0.0);
@@ -347,14 +374,34 @@ impl ParameterBuilder {
 }
 
 #[derive(Clone, Debug)]
+/// An **Auxiliary Input** allows routing the output of a module to another one. They can also be
+/// understood as **side chain connections**.
+/// # Parameters
+/// Auxiliary inputs make no sense if they are not linked with a [Parameter]. Auxiliary Inputs are
+/// owned by the same module to be modulated and, in order to work, the tags of both Auxiliary
+/// Input and Parameters must match.
+///
+/// # Value translation (important!)
+/// On top of that, Aux Inputs perform a [translation](fn@AuxiliaryInput::translate) of the incoming data. Although *every module*
+/// outputs values from -1 to 1 (f32 sample format) which is perfect for raw output data,
+/// these values don't fit the majority of modules (no to say none) and, thus, the values need to
+/// be adjusted. This is important to bear in mind as when defining a Auxiliary Input no to get
+/// errors from invalid data inputs.
 pub struct AuxiliaryInput {
+    /// [Parameter] to which the Auxiliary Input shall be linked with (must match with the tag field of the parameter in order to work).
     tag: String,
+    /// The buffer with the output of the **modulator** module.
     buffer: Vec<f32>,
+    /// The *maximum* value of the **input** of the parameter. Don't need to match with the max of
+    /// the associated parameter, but must be lower or equal to work properly.
     max: f32,
+    /// The *minimum* value of the **input** of the parameter. Don't need to match with the min of
+    /// the associated parameter, but must be greater or equal to work properly.
     min: f32,
 }
 
 impl AuxiliaryInput {
+    /// Retrieves the tag of the Auxiliary Input.
     pub fn get_tag(&self) -> String {
         self.tag.to_string()
     }
@@ -369,6 +416,25 @@ impl AuxiliaryInput {
         }
     }
 
+    /// Translation of the values from [-1, 1] to [min, max]. Read the [AuxiliaryInput] description
+    /// for a full explanation.
+    ///
+    /// When getting a value from a AuxiliaryInput a previous translation will be performed to
+    /// match the output of any module [-1, 1] to the values set when
+    /// [building](struct@AuxInputBuilder) the auxiliary.
+    /// ```rust
+    /// let buffer = vec![0.0f32; 10];
+    ///         
+    /// AuxInputBuilder::new("amplitude", buffer)
+    ///     .with_min(0.0)
+    ///     .with_max(1.0)
+    ///     .build()
+    ///     .unwrap();
+    ///         
+    /// // Input: -1.0; Output: 0.0
+    /// // Input:  0.0; Output: 0.5
+    /// // Input:  1.0; Output: 1.0
+    /// ```
     fn translate(&self, value: f32) -> f32 {
         let size = self.max - self.min;
 
@@ -376,17 +442,40 @@ impl AuxiliaryInput {
     }
 }
 
-impl AuxiliaryInput {}
-
-/// Auxiliary Input Builder
+/// The proper way of creating an Auxiliary Input. To understand how they work and should
+/// be used, please check the **[AuxiliaryInput]** page.
+/// # Usage
+/// ```rust
+/// let buffer = vec![0.0f32; 10]; // Buffer with the output of the previous module
+///
+/// // Linking the auxiliary with the frequency (FM)
+/// let mut aux = AuxInputBuilder::new("frequency", buffer).build().unwrap();
+///
+/// // Creating a buffer and an oscillator
+/// let mut buffer = vec![0.0f32; 10];
+/// let mut osc = OscillatorBuilder::new().build().unwrap();
+///
+/// // Fill the data of the buffer with the new auxiliary.
+/// osc.fill_buffer_w_aux(&mut buffer, Some(vec![&mut aux]));
+///
+/// ```
 pub struct AuxInputBuilder {
+    /// Tag matching the [Parameter] field.
     tag: String,
+    /// Buffer to hold the data of the previous module.
     buffer: Vec<f32>,
+    /// Maximum value. Defaults on 1.0
     max: Option<f32>,
+    /// Minimum value. Defaults on 0.0
     min: Option<f32>,
 }
 
 impl AuxInputBuilder {
+    /// Creates a new [AuxiliaryInput] builder with all values at default.
+    /// Requires a tag and a buffer.
+    /// # Arguments
+    /// * `tag` - Name of the parameter linked with the Aux Input.
+    /// * `buffer` - Buffer containing the data generated by the previous module (modulator).
     pub fn new(tag: &str, buffer: Vec<f32>) -> Self {
         Self {
             tag: tag.to_string(),
@@ -396,16 +485,19 @@ impl AuxInputBuilder {
         }
     }
 
+    /// Defines a max value for the [AuxiliaryInput].
     pub fn with_max(mut self, max: f32) -> Self {
         self.max = Some(max);
         self
     }
 
+    /// Defines a min value for the [AuxiliaryInput].
     pub fn with_min(mut self, min: f32) -> Self {
         self.min = Some(min);
         self
     }
 
+    /// Generates an [AuxiliaryInput] from the values specified.
     pub fn build(self) -> Result<AuxiliaryInput, String> {
         let max = self.max.unwrap_or(1.0);
         let min = self.min.unwrap_or(0.0);
