@@ -250,6 +250,8 @@ mod oscillator_builder_tests {
     use super::Module;
     use super::OscillatorBuilder;
     use crate::bundled_modules::Oscillator;
+    use crate::module::Clock;
+    use crate::SAMPLE_RATE;
     use simplelog::__private::paris::Logger;
     use std::f32::consts::PI;
 
@@ -260,12 +262,14 @@ mod oscillator_builder_tests {
     #[test]
     fn test_default() {
         let mut logger = get_logger();
+        let mut clock = Clock::new(SAMPLE_RATE);
+
         logger.info("<b>Running test for oscillator builder with no arguments</>");
 
         let osc = OscillatorBuilder::new().build().unwrap();
 
         assert_eq!(osc.sample_rate, 44100.0, "Default sample mismatch");
-        assert_eq!(osc.clock.get_value(), 0.0, "Clock mismatch");
+        assert_eq!(clock.get_value(), 0.0, "Clock mismatch");
 
         let amp = (&osc).get_parameter("amplitude");
         let phase = (&osc).get_parameter("phase");
@@ -285,6 +289,7 @@ mod oscillator_builder_tests {
 
     #[test]
     fn test_all_fields() {
+        let mut clock = Clock::new(SAMPLE_RATE);
         let osc = OscillatorBuilder::new()
             .with_amplitude(0.5)
             .with_frequency(220.0)
@@ -294,7 +299,7 @@ mod oscillator_builder_tests {
             .unwrap();
 
         assert_eq!(osc.sample_rate, 22000.0, "Sample mismatch");
-        assert_eq!(osc.clock.get_value(), 0.0, "Clock mismatch");
+        assert_eq!(clock.get_value(), 0.0, "Clock mismatch");
 
         let amp = (&osc).get_parameter("amplitude");
         let phase = (&osc).get_parameter("phase");
