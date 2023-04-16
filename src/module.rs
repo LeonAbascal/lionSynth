@@ -19,7 +19,7 @@ pub struct LinkerModule {
 ///
 /// # How it works
 /// Each module is able to receive and retrieve a buffer of any size. Data (samples) is represented
-/// in a [f32] format, and the module will modify it. For such, it will be calling the [behaviour](fn@Module::batch_behaviour)
+/// in a [f32] format, and the module will modify it. For such, it will be calling the [behaviour](fn@Module::behaviour)
 /// method, which is the only one you need to override. I do not recommend overriding the rest
 /// of the methods.
 ///
@@ -67,21 +67,59 @@ pub trait Module {
     /// Fills the input buffer with new information. It may generate or modify the buffer.
     ///
     /// It also sets the clock forward and calls every function that needs to be updated on every
-    /// tick, such as the [behavior](fn@Module::batch_behaviour) or the update of the parameters.
+    /// tick, such as the [behavior](fn@Module::behaviour) or the update of the parameters.
+    /// # Linker and generator modules
+    /// A **generator module** does not use the incoming data, precisely because it is generating it.
+    /// The input data is thus ignored, but the input buffer should be initialized.
+    ///
+    /// A **linker module** does modify the input buffer, so it does not ignore the incoming data.
+    ///
+    /// # Start the clock at a different time (partial batching)
+    /// If you wanted to fill up the buffer until a specific moment, it is possible feeding the
+    /// return value of this function into the [`fill_buffer_at`](fn@Module::fill_buffer_at)
+    /// function.
+    ///
+    /// In the contrary, this function always starts with the clock at zero (the beginning).
+    ///
+    /// # Arguments
+    /// * `buffer` - The buffer to fill/modify.
+    /// * `auxiliaries` - A vector with the auxiliary inputs for the operation. Can be empty.
+    ///
     /// # Returns
     /// The last value of the clock.
     // TODO stereo
     fn fill_buffer(&mut self, buffer: &mut Vec<f32>, mut auxiliaries: Vec<AuxiliaryInput>) -> f32 {
+        self.fill_buffer_at(buffer, 0.0, auxiliaries)
+    }
+
+    /// Does the same as [`fill_buffer`](fn@Module::fill_buffer) function though a starting time
+    /// for the clock can be specified.
+    ///
+    /// Please read [`fill_buffer`](fn@Module::fill_buffer) for more information.
+    /// # Arguments
+    /// * `buffer` - The buffer to fill/modify.
+    /// * `auxiliaries` - A vector with the auxiliary inputs for the operation. Can be empty.
+    /// * `start_at` - The value of the clock where it should start.
+    ///
+    /// # Returns
+    /// The last value of the clock.
+    fn fill_buffer_at(
+        &mut self,
+        buffer: &mut Vec<f32>,
+        start_at: f32,
+        mut auxiliaries: Vec<AuxiliaryInput>,
+    ) -> f32 {
         #[cfg(feature = "verbose_modules")]
         {
             info!("<b>Running module <cyan>{}</>", self.get_name());
         }
 
-        // TODO modularize this function not to reimplement the unecessary.
+        // TODO modularize this function not to reimplement the unnecessary.
         // maybe receive a closure with popping the values?
         warn!("<b>A <u>custom implementation</><b> for buffer filling with auxiliary inputs is recommended for better <yellow>performance</><b>.</>");
 
         let mut clock = Clock::new(44100); // TODO add get_sample_rate to Module trait
+        clock.tick = start_at;
 
         #[cfg(feature = "verbose_modules")]
         {
@@ -129,15 +167,6 @@ pub trait Module {
         });
 
         clock.get_value()
-    }
-
-    fn fill_buffer_at(
-        &mut self,
-        buffer: &mut Vec<f32>,
-        start_at: f32,
-        mut auxiliaries: Vec<AuxiliaryInput>,
-    ) {
-        // TODO
     }
 
     /// Defines the behaviour of the module. Is it going to generate data? Is it going to clip the
