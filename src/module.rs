@@ -161,6 +161,7 @@ pub trait Module {
             result
         };
 
+        // FILLING THE BUFFER IS THIS EASY
         buffer.iter_mut().for_each(|sample| {
             self.update_parameters(pop_auxiliaries());
             *sample = self.get_sample(*sample, clock.inc())

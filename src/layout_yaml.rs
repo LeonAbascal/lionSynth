@@ -21,7 +21,7 @@ struct AuxInfo {
     min: Option<f32>,
 }
 
-pub fn module_chain_from_yaml(file: &str, buffer_length: usize) -> Vec<f32> {
+pub fn buffer_from_yaml(file: &str, buffer_length: usize) -> Vec<f32> {
     println!(); // Logger cleanspace
 
     info!("<b>Loading data from <red>layouts/{}</><b>.</>", file);
