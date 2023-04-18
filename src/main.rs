@@ -5,23 +5,17 @@ mod module;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{Device, FromSample, Sample, SampleFormat, SampleRate, StreamConfig};
-use ringbuf::{Rb, SharedRb};
-use std::mem::MaybeUninit;
-use std::ptr::write;
-use std::sync::Arc;
+
 use std::thread::sleep;
 use std::time::Duration;
-use std::{thread, time};
 
 // DEBUGGING, LOGGING
 use simplelog::__private::paris::Logger;
 use simplelog::*;
-use yaml_rust::Yaml::Real;
 
 // MY STUFF
-use crate::bundled_modules::Oscillator;
 use crate::layout_yaml::buffer_from_yaml;
-use crate::module::{AuxInputBuilder, AuxiliaryInput};
+use crate::module::AuxInputBuilder;
 use back_end::{get_preferred_config, output_wav, Channels};
 use bundled_modules::debug::{OscDebug, PassTrough};
 use bundled_modules::OscillatorBuilder;
@@ -44,7 +38,7 @@ fn main() -> Result<(), anyhow::Error> {
         ColorChoice::Auto,
     )
     .expect("Failed to start simplelog");
-    let mut logger = Logger::new();
+    // let logger = Logger::new();
 
     // FILL BUFFER
     info!("<b>Running <blue>demo program</>");
@@ -53,9 +47,10 @@ fn main() -> Result<(), anyhow::Error> {
     // let mut stream_buffer = module_chain(buffer_size);
     test();
 
-    let mut stream_buffer = buffer_from_yaml("test.yaml", buffer_size);
+    let stream_buffer = buffer_from_yaml("test.yaml", buffer_size);
     output_wav(stream_buffer.clone(), "test.wav");
-    play_buffer(stream_buffer, signal_duration).expect("Playback unsuccessful.");
+    // play_buffer(stream_buffer, signal_duration).expect("Playback unsuccessful.");
+    play_stream(signal_duration).expect("Playback unsuccessful,");
 
     info!("<green><tick></> <b>Program finished <green>successfully</><b>.</>");
     Ok(())
@@ -81,7 +76,10 @@ fn write_silence<T: Sample>(data: &mut [T], _: &cpal::OutputCallbackInfo) {
     }
 }
 
-fn play_buffer(mut stream_buffer: Vec<f32>, signal_duration: i32) -> Result<(), anyhow::Error> {
+fn play_stream(signal_duration: i32) -> Result<(), anyhow::Error> {
+    use module::{GeneratorModuleWrapper, LinkerModuleWrapper};
+    use ringbuf::HeapRb;
+
     let mut logger = Logger::new();
     // get default host
     let host = cpal::default_host();
@@ -104,19 +102,72 @@ fn play_buffer(mut stream_buffer: Vec<f32>, signal_duration: i32) -> Result<(), 
 
     let channels = config.channels as usize;
 
-    /* TODO: real time processing
-    let sample_rate = config.sample_rate.0 as f32;
-    // A closure to generate a sin wave
-    let mut sample_clock = 0f32;
-    let frequency = 440.0;
+    let osc = OscillatorBuilder::new()
+        .with_name("Test")
+        .build()
+        .expect("Invalid arguments for oscillator");
+    let pt = PassTrough::new();
 
+    let rb: HeapRb<f32> = HeapRb::new(10);
+    let (producer, consumer) = rb.split();
+    let final_rb: HeapRb<f32> = HeapRb::new(10);
+    let (prod2, mut cons2) = final_rb.split();
 
+    let mut osc = GeneratorModuleWrapper::new(Box::new(osc), producer);
+
+    let mut pt = LinkerModuleWrapper::new(Box::new(pt), consumer, prod2);
     let mut next_value = move || {
         // CALL FIRST MODULE
-        sample_clock = (sample_clock + 1.0) % sample_rate;
-        (sample_clock * frequency * 2.0 * PI / sample_rate).sin()
+        cons2.pop().unwrap_or(0.0)
     };
-     */
+
+    let err_fn = |err| eprintln!("an error occurred on stream: {}", err);
+
+    // call a function to let cpal output the stream
+    let stream = device.build_output_stream(
+        &config,
+        move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
+            write_data(data, channels, &mut next_value)
+        },
+        err_fn,
+        None,
+    )?;
+
+    info!("<b>Signal duration: <u>{} milliseconds</>", signal_duration);
+    warn!("<yellow><warn></> <b>The end of the buffer may be filled with <blue>silence</><b>.</>");
+    logger.loading("<blue><info></><b> Playing sound</>");
+    stream.play()?;
+
+    // duration of the tone
+    sleep(Duration::from_millis(signal_duration as u64));
+
+    logger.done();
+
+    Ok(())
+}
+
+fn play_buffer(mut stream_buffer: Vec<f32>, signal_duration: i32) -> Result<(), anyhow::Error> {
+    let mut logger = Logger::new();
+    // get default host
+    let host = cpal::default_host();
+
+    // get default device
+    let device: Device = host
+        .default_output_device()
+        .expect("no default output device available. Please check if one is selected");
+
+    // load config
+    let supported_config = get_preferred_config(
+        &device,
+        Some(SampleFormat::F32),
+        Some(SampleRate(SAMPLE_RATE as u32)),
+        Some(Channels::Stereo),
+    );
+
+    // open stream
+    let config: StreamConfig = supported_config.into();
+
+    let channels = config.channels as usize;
 
     // If there is no more values in the buffer, silence
     let mut next_value = move || stream_buffer.pop().unwrap_or(0.0);
@@ -194,30 +245,9 @@ fn module_chain(buffer_length: usize) -> Vec<f32> {
 }
 
 fn test() {
-    use ::ringbuf::{Consumer, HeapRb, Producer};
+    use module::{GeneratorModuleWrapper, LinkerModuleWrapper};
+    use ringbuf::HeapRb;
     use std::process::exit;
-
-    struct GeneratorModuleWrapper {
-        module: Box<dyn Module>,
-        prod: Producer<f32, std::sync::Arc<SharedRb<f32, Vec<core::mem::MaybeUninit<f32>>>>>,
-    }
-
-    impl GeneratorModuleWrapper {
-        fn gen_sample(&mut self, time: f32) {
-            if self.prod.is_full() {
-                error!("<b>Buffer <red>full</><b>.</>");
-            } else {
-                let value = self.module.get_sample(0.0, time);
-                self.prod.push(value).unwrap();
-            }
-        }
-    }
-
-    struct LinkerModuleWrapper {
-        module: Box<dyn Module>,
-        cons: Consumer<f32, std::sync::Arc<SharedRb<f32, Vec<core::mem::MaybeUninit<f32>>>>>,
-        prod: Producer<f32, std::sync::Arc<SharedRb<f32, Vec<core::mem::MaybeUninit<f32>>>>>,
-    }
 
     let osc = OscillatorBuilder::new()
         .with_name("Test")
@@ -226,26 +256,21 @@ fn test() {
     let pt = PassTrough::new();
 
     let rb: HeapRb<f32> = HeapRb::new(10);
-    let (mut producer, mut consumer) = rb.split();
+    let (producer, consumer) = rb.split();
     let final_rb: HeapRb<f32> = HeapRb::new(10);
-    let (mut prod2, cons2) = final_rb.split();
+    let (prod2, mut cons2) = final_rb.split();
 
-    let mut osc = GeneratorModuleWrapper {
-        module: Box::new(osc),
-        prod: producer,
-    };
+    let mut osc = GeneratorModuleWrapper::new(Box::new(osc), producer);
 
-    let pt = LinkerModuleWrapper {
-        module: Box::new(pt),
-        cons: consumer,
-        prod: prod2,
-    };
+    let mut pt = LinkerModuleWrapper::new(Box::new(pt), consumer, prod2);
 
     for i in 0..10 {
         let time = i as f32;
         osc.gen_sample(time);
-        // todo consume sample
+        pt.gen_sample(time);
     }
 
-    exit(0);
+    while !cons2.is_empty() {
+        info!("{}", cons2.pop().unwrap());
+    }
 }

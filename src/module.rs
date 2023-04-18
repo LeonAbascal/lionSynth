@@ -1,17 +1,9 @@
-use crate::bundled_modules::OscillatorBuilder;
-use crate::SAMPLE_RATE;
-use log::error;
-use simplelog::{info, warn};
+use ringbuf::SharedRb;
+use ringbuf::{Consumer, Producer};
+use simplelog::{error, info, warn};
 use std::collections::HashMap;
-use yaml_rust::Yaml::Hash;
-
-/// A **linker module** is a module able to connect into another. An example of linker module
-/// would be an effect module or an [ADSR](https://en.wikipedia.org/wiki/Envelope_(music)) module.
-/// An example of **not** linker module would be an generator module, which does not use any
-/// input sample but instead generates one.
-pub struct LinkerModule {
-    // TODO
-}
+use std::mem::MaybeUninit;
+use std::sync::Arc;
 
 // TODO: revisit
 /// Modules are the building blocks of a modular synthesizer, its essence. They are defined by
@@ -88,7 +80,7 @@ pub trait Module {
     /// # Returns
     /// The last value of the clock.
     // TODO stereo
-    fn fill_buffer(&mut self, buffer: &mut Vec<f32>, mut auxiliaries: Vec<AuxiliaryInput>) -> f32 {
+    fn fill_buffer(&mut self, buffer: &mut Vec<f32>, auxiliaries: Vec<AuxiliaryInput>) -> f32 {
         self.fill_buffer_at(buffer, 0.0, auxiliaries)
     }
 
@@ -236,6 +228,91 @@ pub trait Module {
 
     // USEFUL FOR DEBUGGING
     fn get_name(&self) -> String;
+}
+
+/// A **linker module** is a module able to consume data from modules, process it, and deliver it
+/// to another module. An example of linker module would be an effect module or
+/// an [ADSR](https://en.wikipedia.org/wiki/Envelope_(music)) module.
+///
+/// An example of **not** linker module would be an [generator module](struct@GeneratorModuleWrapper),
+/// which does not use any input sample but instead generates one.
+///
+/// The [`LinkerModuleWrapper`](struct@LinkerModuleWrapper) does wrap a [Module] including
+/// a [Consumer](https://docs.rs/ringbuf/latest/ringbuf/consumer/struct.Consumer.html) and a
+/// [Producer](https://docs.rs/ringbuf/latest/ringbuf/producer/struct.Producer.html) of a
+/// *ring buffer*. This allows the delivery of samples among modules in real time.
+///
+/// The *producer* of a linker module must be connected to the *consumer* of the **next module** in
+/// the chain, and the *consumer* of the linker module must be connected to the *producer* of the
+/// **previous module** in the chain.
+pub struct LinkerModuleWrapper {
+    module: Box<dyn Module>,
+    consumer: Consumer<f32, Arc<SharedRb<f32, Vec<MaybeUninit<f32>>>>>,
+    producer: Producer<f32, Arc<SharedRb<f32, Vec<MaybeUninit<f32>>>>>,
+}
+
+impl LinkerModuleWrapper {
+    pub fn new(
+        module: Box<dyn Module>,
+        consumer: Consumer<f32, Arc<SharedRb<f32, Vec<MaybeUninit<f32>>>>>,
+        producer: Producer<f32, Arc<SharedRb<f32, Vec<MaybeUninit<f32>>>>>,
+    ) -> Self {
+        Self {
+            module,
+            consumer,
+            producer,
+        }
+    }
+
+    pub fn gen_sample(&mut self, time: f32) {
+        if self.consumer.is_empty() {
+            error!("<b>Buffer <red>empty</><b> in Linker Module.</>");
+            error!("  |_ name: {}", self.module.get_name());
+        } else {
+            if self.producer.is_full() {
+                error!("<b>Buffer <red>full</><b> in Linker Module.</>");
+                error!("  |_ name: {}", self.module.get_name());
+            } else {
+                let prev = self.consumer.pop().unwrap();
+                let value = self.module.get_sample(prev, time);
+                self.producer.push(value).unwrap();
+            }
+        }
+    }
+}
+
+/// A **generator module** is a module able to generate and deliver data to another module.
+/// It should always be the first element of the chain. An example of generator module would be an
+/// [Oscillator](struct@crate::Oscillator) module.
+///
+/// The [`GeneratorModuleWrapper`](struct@GeneratorModuleWrapper) does wrap a [Module] including
+/// a [Producer](https://docs.rs/ringbuf/latest/ringbuf/producer/struct.Producer.html) of a
+/// *ring buffer*. This allows the delivery of samples to another module in real time.
+///
+/// The *producer* of a generator module must be connected to the *consumer* of the **next module** in
+/// the chain.
+pub struct GeneratorModuleWrapper {
+    module: Box<dyn Module>,
+    producer: Producer<f32, Arc<SharedRb<f32, Vec<MaybeUninit<f32>>>>>,
+}
+
+impl GeneratorModuleWrapper {
+    pub fn new(
+        module: Box<dyn Module>,
+        producer: Producer<f32, Arc<SharedRb<f32, Vec<MaybeUninit<f32>>>>>,
+    ) -> Self {
+        Self { module, producer }
+    }
+
+    pub fn gen_sample(&mut self, time: f32) {
+        if self.producer.is_full() {
+            error!("<b>Buffer <red>full</><b> in Generator Module.</>");
+            error!("  |_ name: {}", self.module.get_name());
+        } else {
+            let value = self.module.get_sample(0.0, time);
+            self.producer.push(value).unwrap();
+        }
+    }
 }
 
 /// Parameters are what control the behaviour of a module. For example, in an oscillator, some
@@ -552,6 +629,7 @@ impl AuxInputBuilder {
     }
 }
 
+/// A structure with some bundled methods to easily manage time synchronization.
 pub struct Clock {
     tick: f32,
     sample_rate: f32,

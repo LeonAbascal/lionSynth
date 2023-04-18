@@ -8,7 +8,6 @@ use std::fs;
 use yaml_rust::YamlLoader;
 
 struct ChainCell {
-    id: i64,
     from_module: Option<i64>,
     module: Box<dyn Module>,
     auxiliaries: Vec<AuxInfo>,
@@ -126,7 +125,6 @@ pub fn buffer_from_yaml(file: &str, buffer_length: usize) -> Vec<f32> {
         module_chain.insert(
             module_id,
             ChainCell {
-                id: module_id,
                 from_module: (&module["input-from"]).as_i64(),
                 module: generated_module,
                 auxiliaries,
@@ -142,9 +140,7 @@ pub fn buffer_from_yaml(file: &str, buffer_length: usize) -> Vec<f32> {
     let first_module_index = first_module_index.unwrap();
 
     info!("<b>Filling buffer:</>\n");
-    let buffer = fill_buffers(&mut module_chain, first_module_index, buffer_length);
-
-    buffer
+    fill_buffers(&mut module_chain, first_module_index, buffer_length)
 }
 
 fn fill_buffers(
