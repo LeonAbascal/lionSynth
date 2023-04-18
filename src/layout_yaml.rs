@@ -20,7 +20,7 @@ struct AuxInfo {
     min: Option<f32>,
 }
 
-pub fn buffer_from_yaml(file: &str, buffer_length: usize) -> Vec<f32> {
+fn load_yaml(file: &str, first_module_index: &mut Option<i64>) -> HashMap<i64, ChainCell> {
     println!(); // Logger cleanspace
 
     info!("<b>Loading data from <red>layouts/{}</><b>.</>", file);
@@ -45,7 +45,6 @@ pub fn buffer_from_yaml(file: &str, buffer_length: usize) -> Vec<f32> {
 
     info!("<b>Creating module chain.</>");
     let mut module_chain: HashMap<i64, ChainCell> = HashMap::new();
-    let mut first_module_index: Option<i64> = None;
 
     for module in layout.clone().into_iter() {
         let module = &module["module"];
@@ -71,7 +70,7 @@ pub fn buffer_from_yaml(file: &str, buffer_length: usize) -> Vec<f32> {
                     error!("<b>Two modules have been defined as <red>Operative System output</><b>. There can only be <cyan>one at a time</><b>.</>");
                     panic!();
                 }
-                first_module_index = Some(module_id);
+                *first_module_index = Some(module_id);
             }
         }
 
@@ -137,13 +136,34 @@ pub fn buffer_from_yaml(file: &str, buffer_length: usize) -> Vec<f32> {
         panic!();
     }
 
-    let first_module_index = first_module_index.unwrap();
-
-    info!("<b>Filling buffer:</>\n");
-    fill_buffers(&mut module_chain, first_module_index, buffer_length)
+    module_chain
 }
 
-fn fill_buffers(
+pub fn buffer_from_yaml(file: &str, buffer_length: usize) -> Vec<f32> {
+    let mut first_module_index: Option<i64> = None;
+    let mut module_chain = load_yaml(file, &mut first_module_index);
+
+    let first_position = first_module_index.unwrap();
+
+    info!("<b>Filling buffer:</>\n");
+    fill_buffer(&mut module_chain, first_position, buffer_length)
+}
+
+pub fn stream_from_yaml() {
+    let mut first_module_index: Option<i64> = None;
+    let mut module_chain = load_yaml(file, &mut first_module_index);
+
+    let first_position = first_module_index.unwrap();
+
+    // TODO add a "to_module" field to the ChainCell struct which is calculated ()
+    // TODO during the load_yaml. Is read to generate the producer and consumer pair.
+    // TODO how do auxiliaries work in this context?
+
+    // TODO add a module with id -1 to the chain, which is the cpal output module.
+    // TODO raise an exception if id -1 is used.
+}
+
+fn fill_buffer(
     module_chain: &mut HashMap<i64, ChainCell>,
     current_pos: i64,
     buffer_size: usize,
@@ -156,7 +176,7 @@ fn fill_buffers(
     let mut aux_list: Vec<AuxiliaryInput> = Vec::new();
 
     for aux in current_module.auxiliaries {
-        let aux_buffer = fill_buffers(module_chain, aux.from_module, buffer_size);
+        let aux_buffer = fill_buffer(module_chain, aux.from_module, buffer_size);
         let aux = AuxInputBuilder::new(&aux.linked_with, aux_buffer)
             .with_all_yaml(aux.max, aux.min)
             .build()
@@ -170,7 +190,7 @@ fn fill_buffers(
         // LINKER MODULE (PROCESS BUFFER)
 
         let next_id = next_id.unwrap();
-        let mut buffer = fill_buffers(module_chain, next_id, buffer_size);
+        let mut buffer = fill_buffer(module_chain, next_id, buffer_size);
         current_module.module.fill_buffer(&mut buffer, aux_list);
         buffer
     } else {

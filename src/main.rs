@@ -113,9 +113,9 @@ fn play_stream(signal_duration: i32) -> Result<(), anyhow::Error> {
     let final_rb: HeapRb<f32> = HeapRb::new(10);
     let (prod2, mut cons2) = final_rb.split();
 
-    let mut osc = GeneratorModuleWrapper::new(Box::new(osc), producer);
+    GeneratorModuleWrapper::new(Box::new(osc), producer);
+    LinkerModuleWrapper::new(Box::new(pt), consumer, prod2);
 
-    let mut pt = LinkerModuleWrapper::new(Box::new(pt), consumer, prod2);
     let mut next_value = move || {
         // CALL FIRST MODULE
         cons2.pop().unwrap_or(0.0)
