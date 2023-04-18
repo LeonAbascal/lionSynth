@@ -28,13 +28,8 @@ layout:
         - aux:
             from-id: 1
             linked-with: frequency
-            max: 20
-            min: 10
-        - aux:
-            from-id: 3
-            linked-with: amplitude
-            max: 1
-            min: 0
+            max: 20.0
+            min: 10.0
   # An example with only compulsory parameters set
   - module:
       id: 1

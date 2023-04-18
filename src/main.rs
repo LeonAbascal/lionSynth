@@ -5,7 +5,9 @@ mod module;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{Device, FromSample, Sample, SampleFormat, SampleRate, StreamConfig};
+use std::process::exit;
 
+use ringbuf::HeapRb;
 use std::thread::sleep;
 use std::time::Duration;
 
@@ -14,8 +16,8 @@ use simplelog::__private::paris::Logger;
 use simplelog::*;
 
 // MY STUFF
-use crate::layout_yaml::buffer_from_yaml;
-use crate::module::AuxInputBuilder;
+use crate::layout_yaml::{buffer_from_yaml, play_from_yaml};
+use crate::module::{AuxDataHolder, AuxInputBuilder, Clock};
 use back_end::{get_preferred_config, output_wav, Channels};
 use bundled_modules::debug::{OscDebug, PassTrough};
 use bundled_modules::OscillatorBuilder;
@@ -40,17 +42,22 @@ fn main() -> Result<(), anyhow::Error> {
     .expect("Failed to start simplelog");
     // let logger = Logger::new();
 
+    play_from_yaml("test.yaml", 1000).expect("Error during playback.");
+    exit(0);
     // FILL BUFFER
     info!("<b>Running <blue>demo program</>");
     let signal_duration: i32 = 1000; // milliseconds
     let buffer_size: usize = (signal_duration * SAMPLE_RATE / 1000) as usize;
+
+    // remove, use buffer from yaml
     // let mut stream_buffer = module_chain(buffer_size);
-    test();
 
     let stream_buffer = buffer_from_yaml("test.yaml", buffer_size);
     output_wav(stream_buffer.clone(), "test.wav");
     // play_buffer(stream_buffer, signal_duration).expect("Playback unsuccessful.");
-    play_stream(signal_duration).expect("Playback unsuccessful,");
+
+    // Testing function. Please go to stream_from_yaml
+    play_stream(signal_duration).expect("Playback unsuccessful.");
 
     info!("<green><tick></> <b>Program finished <green>successfully</><b>.</>");
     Ok(())
@@ -113,8 +120,8 @@ fn play_stream(signal_duration: i32) -> Result<(), anyhow::Error> {
     let final_rb: HeapRb<f32> = HeapRb::new(10);
     let (prod2, mut cons2) = final_rb.split();
 
-    GeneratorModuleWrapper::new(Box::new(osc), producer);
-    LinkerModuleWrapper::new(Box::new(pt), consumer, prod2);
+    let mut osc = GeneratorModuleWrapper::new(Box::new(osc), producer, vec![]);
+    let mut pt = LinkerModuleWrapper::new(Box::new(pt), consumer, prod2, vec![]);
 
     let mut next_value = move || {
         // CALL FIRST MODULE
@@ -220,7 +227,7 @@ fn module_chain(buffer_length: usize) -> Vec<f32> {
 
     modulator.fill_buffer(&mut modulator_buffer, vec![]);
 
-    let aux = AuxInputBuilder::new("frequency", modulator_buffer)
+    let aux = AuxInputBuilder::new("frequency", AuxDataHolder::Batch(modulator_buffer))
         .with_max(20.0)
         .with_min(10.0)
         .build()
@@ -242,35 +249,4 @@ fn module_chain(buffer_length: usize) -> Vec<f32> {
         println!();
     }
     buffer
-}
-
-fn test() {
-    use module::{GeneratorModuleWrapper, LinkerModuleWrapper};
-    use ringbuf::HeapRb;
-    use std::process::exit;
-
-    let osc = OscillatorBuilder::new()
-        .with_name("Test")
-        .build()
-        .expect("Invalid arguments for oscillator");
-    let pt = PassTrough::new();
-
-    let rb: HeapRb<f32> = HeapRb::new(10);
-    let (producer, consumer) = rb.split();
-    let final_rb: HeapRb<f32> = HeapRb::new(10);
-    let (prod2, mut cons2) = final_rb.split();
-
-    let mut osc = GeneratorModuleWrapper::new(Box::new(osc), producer);
-
-    let mut pt = LinkerModuleWrapper::new(Box::new(pt), consumer, prod2);
-
-    for i in 0..10 {
-        let time = i as f32;
-        osc.gen_sample(time);
-        pt.gen_sample(time);
-    }
-
-    while !cons2.is_empty() {
-        info!("{}", cons2.pop().unwrap());
-    }
 }
