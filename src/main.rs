@@ -85,7 +85,6 @@ fn write_silence<T: Sample>(data: &mut [T], _: &cpal::OutputCallbackInfo) {
 
 fn play_stream(signal_duration: i32) -> Result<(), anyhow::Error> {
     use module::{GeneratorModuleWrapper, LinkerModuleWrapper};
-    use ringbuf::HeapRb;
 
     let mut logger = Logger::new();
     // get default host

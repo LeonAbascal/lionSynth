@@ -1,15 +1,20 @@
+use crate::back_end::{get_preferred_config, Channels};
 use crate::bundled_modules::debug::*;
 use crate::bundled_modules::*;
 use crate::module::{
-    AuxDataHolder, AuxInputBuilder, AuxiliaryInput, GeneratorModuleWrapper, LinkerModuleWrapper,
-    Module, ModuleProducer, ModuleWrapper,
+    AuxDataHolder, AuxInputBuilder, AuxiliaryInput, Clock, GeneratorModuleWrapper,
+    LinkerModuleWrapper, Module, ModuleProducer, ModuleWrapper,
 };
 use crate::SAMPLE_RATE;
+use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use cpal::{Device, FromSample, Sample, SampleFormat, SampleRate, StreamConfig};
+use ringbuf::HeapRb;
 use simplelog::{error, info, warn};
 use std::collections::{HashMap, LinkedList};
-use std::fs;
+use std::sync::Mutex;
 use std::thread::sleep;
 use std::time::Duration;
+use std::{fs, thread};
 use yaml_rust::{Yaml, YamlLoader};
 
 const RING_BUFFER_CAPACITY: usize = 10;
@@ -259,6 +264,21 @@ pub fn play_from_yaml(file: &str, signal_duration: u64) -> Result<(), anyhow::Er
 
     let mut coordinator = CoordinatorEntity::new(SAMPLE_RATE, wrapper_chain);
 
+    let mut coord_wrapper = Mutex::new(coordinator);
+
+    let handle_a = thread::spawn(|| {
+        let mut coordinator = coord_wrapper.lock().unwrap();
+        coordinator.tick();
+    });
+
+    let handle_b = thread::spawn(|| {
+        let mut coordinator = coord_wrapper.lock().unwrap();
+        coordinator.tick();
+    });
+
+    handle_a.join().unwrap();
+    handle_b.join().unwrap();
+
     /*for i in 0..5 {
         coordinator.tick();
         let value = cons.pop().unwrap_or(0.0);
@@ -285,10 +305,13 @@ pub fn play_from_yaml(file: &str, signal_duration: u64) -> Result<(), anyhow::Er
 
     // open stream
     let config: StreamConfig = supported_config.into();
-
     let channels = config.channels as usize;
 
-    let mut next_value = move || cpal_consumer.pop().unwrap_or(0.0); // Unwrap or silence
+    let mut next_value = move || {
+        // coordinator.tick();
+        // info!("Clock: {}", coordinator.clock.get_value());
+        cpal_consumer.pop().unwrap_or(0.0)
+    }; // Unwrap or silence
 
     let err_fn = |err| eprintln!("an error occurred on stream: {}", err);
 
@@ -296,7 +319,7 @@ pub fn play_from_yaml(file: &str, signal_duration: u64) -> Result<(), anyhow::Er
     let stream = device.build_output_stream(
         &config,
         move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
-            write_data_yaml(data, channels, &mut next_value, &mut coordinator)
+            write_data_yaml(data, channels, &mut next_value) //, &mut coordinator)
         },
         err_fn,
         None,
@@ -354,20 +377,12 @@ pub fn play_from_yaml(file: &str, signal_duration: u64) -> Result<(), anyhow::Er
     // be understood as modules where more than one module meet.
 }
 
-use crate::back_end::{get_preferred_config, Channels};
-use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use cpal::{Device, FromSample, Sample, SampleFormat, SampleRate, StreamConfig};
-
-fn write_data_yaml<T>(
-    output: &mut [T],
-    channels: usize,
-    next_sample: &mut dyn FnMut() -> f32,
-    coordinator: &mut CoordinatorEntity,
-) where
+fn write_data_yaml<T>(output: &mut [T], channels: usize, next_sample: &mut dyn FnMut() -> f32)
+where
     T: Sample + FromSample<f32>,
 {
     for frame in output.chunks_mut(channels) {
-        coordinator.tick(); // Makes the chain generate their own sample
+        // coordinator.tick(); // Makes the chain generate their own sample
 
         let value: T = T::from_sample(next_sample());
         for sample in frame.iter_mut() {
