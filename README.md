@@ -29,12 +29,6 @@ verbose_modules = []            # Verbose modules option
 You can find more information about features on the official
 [documentation](https://doc.rust-lang.org/cargo/reference/features.html).
 
-### Module values
-Makes the modules output their value on each iteration. I only recommend using this option
-only on early debugging with a small set of samples generated, as output can get huge.
-
-`cargo run --features module_values`
-
 ### Verbose modules
 Makes small outputs of information that may be handy for debugging. Activated by default.
 

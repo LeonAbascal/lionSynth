@@ -1,10 +1,18 @@
 // This files contains some custom stuff for initializing the back-end
 
-use cpal::traits::DeviceTrait;
+use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 #[cfg(debug_assertions)]
 use cpal::SupportedOutputConfigs;
-use cpal::{Device, SampleFormat, SampleRate, SupportedStreamConfig, SupportedStreamConfigRange};
-use simplelog::info;
+use cpal::{
+    Device, FromSample, Sample, SampleFormat, SampleRate, StreamConfig, SupportedStreamConfig,
+    SupportedStreamConfigRange,
+};
+use simplelog::__private::paris::Logger;
+use simplelog::{info, warn};
+use std::fs;
+use std::thread::sleep;
+use std::time::Duration;
+
 /// Looks up for a supported config with a specific sample format.
 ///
 /// # Arguments
@@ -153,6 +161,109 @@ impl Channels {
             Self::Mono => 1,
             Self::Stereo => 2,
             Self::Multi(x) => x,
+        }
+    }
+}
+
+pub fn output_wav(buffer: Vec<f32>, filename: &str, sample_rate: i32) {
+    let spec = hound::WavSpec {
+        channels: 1,
+        sample_rate: sample_rate as u32,
+        bits_per_sample: 16,
+        sample_format: hound::SampleFormat::Int,
+    };
+
+    info!("<b>Running <magenta>hound</> <b>to generate a wav file.</>");
+    info!("  <b>|_ Channels: <cyan>{}</>", spec.channels);
+    info!("  <b>|_ Bits per sample: <cyan>{}</>", spec.bits_per_sample);
+    info!(
+        "  <b>|_ Sample format: {}</>",
+        match spec.sample_format {
+            hound::SampleFormat::Int => "<yellow>int",
+            hound::SampleFormat::Float => "<cyan>float",
+        }
+    );
+
+    let subdir = "exports".to_string();
+    info!("  <b>|_ Export directory: <green>.{}/</>", subdir);
+    info!("  <b>|_ File name: <green>{}</>", filename);
+
+    fs::create_dir_all(&subdir).unwrap();
+    let filename = subdir + "/" + filename;
+
+    let mut test_writer = hound::WavWriter::create(filename, spec).unwrap();
+    let amplitude = i16::MAX as f32;
+    for sample in buffer {
+        test_writer
+            .write_sample((amplitude * sample) as i16)
+            .unwrap();
+    }
+
+    test_writer.finalize().unwrap();
+}
+
+pub fn play_buffer(
+    mut buffer: Vec<f32>,
+    signal_duration: i32,
+    sample_rate: i32,
+) -> Result<(), anyhow::Error> {
+    let mut logger = Logger::new();
+
+    let host = cpal::default_host();
+
+    // get default device
+    let device: Device = host
+        .default_output_device()
+        .expect("no default output device available. Please check if one is selected");
+
+    // load config
+    let supported_config = get_preferred_config(
+        &device,
+        Some(SampleFormat::F32),
+        Some(SampleRate(sample_rate as u32)),
+        Some(Channels::Stereo),
+    );
+
+    // open stream
+    let config: StreamConfig = supported_config.into();
+
+    let channels = config.channels as usize;
+
+    // If there is no more values in the buffer, silence
+    let mut next_value = move || buffer.pop().unwrap_or(0.0);
+    let err_fn = |err| eprintln!("an error occurred on stream: {}", err);
+
+    let stream = device.build_output_stream(
+        &config,
+        move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
+            write_data(data, channels, &mut next_value)
+        },
+        err_fn,
+        None,
+    )?;
+
+    info!("<b>Signal duration: <u>{} milliseconds</>", signal_duration);
+    warn!("<yellow><warn></> <b>The end of the buffer may be filled with <blue>silence</><b>.</>");
+    logger.loading("<blue><info></><b> Playing sound</>");
+    stream.play()?;
+
+    // duration of the tone
+    sleep(Duration::from_millis(signal_duration as u64));
+
+    logger.done();
+
+    Ok(())
+}
+
+/// This function fills the data in batches. Is called by the cpal when it considers timely.
+pub fn write_data<T>(output: &mut [T], channels: usize, next_sample: &mut dyn FnMut() -> f32)
+where
+    T: Sample + FromSample<f32>,
+{
+    for frame in output.chunks_mut(channels) {
+        let value: T = T::from_sample(next_sample());
+        for sample in frame.iter_mut() {
+            *sample = value;
         }
     }
 }

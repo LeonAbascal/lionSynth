@@ -1,34 +1,39 @@
-use crate::bundled_modules::OscillatorBuilder;
-use crate::SAMPLE_RATE;
-use simplelog::{info, warn, TermLogger};
+use ringbuf::{Consumer, Producer, SharedRb};
+use simplelog::{error, info, warn};
+use std::collections::HashMap;
+use std::mem::MaybeUninit;
+use std::sync::Arc;
 
-/// A **linker module** is a module able to connect into another. An example of linker module
-/// would be an effect module or an [ADSR](https://en.wikipedia.org/wiki/Envelope_(music)) module.
-/// An example of **not** linker module would be an generator module, which does not use any
-/// input sample but instead generates one.
-pub struct LinkerModule {
-    // TODO
-}
+pub type ModuleConsumer = Consumer<f32, Arc<SharedRb<f32, Vec<MaybeUninit<f32>>>>>;
+pub type ModuleProducer = Producer<f32, Arc<SharedRb<f32, Vec<MaybeUninit<f32>>>>>;
 
-pub struct ModuleClock {
-    sample_rate: f32,
-    tick: f32,
-}
+fn pop_auxiliaries(
+    auxiliaries: &mut Vec<AuxiliaryInput>,
+    current_values: HashMap<String, f32>,
+) -> HashMap<String, f32> {
+    let result: HashMap<String, f32>;
 
-impl ModuleClock {
-    pub fn new(sample_rate: i32) -> Self {
-        Self {
-            sample_rate: sample_rate as f32,
-            tick: 0.0,
-        }
-    }
+    // TODO use current values
+    result = auxiliaries
+        .iter_mut()
+        .map(|aux| {
+            let tag = aux.tag.clone(); // Gets the parameter tag is associated with
+            let value = match aux.pop() {
+                // Gets the next sample in the vector
+                Some(value) => value,
+                None => {
+                    let prev_value = *current_values.get(&tag).unwrap();
+                    // warn!("<b>Values of auxiliary list <yellow>exhausted</><b>. It is perfectly normal for the first samples of the chain.</>");
+                    // warn!("Defaulting to previous value: {}", prev_value);
+                    prev_value // Returns the previous value
+                }
+            };
 
-    pub fn inc(&mut self) {
-        self.tick = (self.tick + 1.0) % self.sample_rate;
-    }
-    pub fn get_value(&self) -> f32 {
-        self.tick
-    }
+            (tag, value) // Returns the generated pair
+        })
+        .collect();
+
+    result
 }
 
 // TODO: revisit
@@ -47,112 +52,124 @@ impl ModuleClock {
 ///
 /// # The parameters
 /// [Parameter] are what change the behaviour of the module in a specific moment.
+///
+/// # Real time vs batch processing
+/// Somehow, the difference among batch processing module and a real time processing module is
+/// the statefulness. The first will keep the values and the buffers until consumption (stateful).
+/// On the other hand, the second will calculate the value on a specific moment. The modules
+/// don't even remember the time of the clock.
 /// TODO: finish doc
 pub trait Module {
-    // fn get_sample(&self); // real time behaviour?
+    fn get_sample(&self, in_sample: f32, time: f32) -> f32 {
+        self.behaviour(in_sample, time)
+    }
+
+    fn get_sample_w_aux(
+        &mut self,
+        in_sample: f32,
+        time: f32,
+        auxiliaries: HashMap<String, f32>,
+    ) -> f32 {
+        self.update_parameters(auxiliaries);
+        self.behaviour(in_sample, time)
+    }
+
+    fn update_parameters(&mut self, auxiliaries: HashMap<String, f32>) {
+        for (tag, value) in auxiliaries {
+            let param = self.get_parameter_mutable(&tag);
+
+            match param {
+                Some(param) => param.set(value),
+                None => {
+                    error!("<b>Parameter tag <red>not found</><b>.</>")
+                }
+            }
+        }
+    }
 
     /// Fills the input buffer with new information. It may generate or modify the buffer.
     ///
     /// It also sets the clock forward and calls every function that needs to be updated on every
     /// tick, such as the [behavior](fn@Module::behaviour) or the update of the parameters.
-
+    /// # Linker and generator modules
+    /// A **generator module** does not use the incoming data, precisely because it is generating it.
+    /// The input data is thus ignored, but the input buffer should be initialized.
+    ///
+    /// A **linker module** does modify the input buffer, so it does not ignore the incoming data.
+    ///
+    /// # Start the clock at a different time (partial batching)
+    /// If you wanted to fill up the buffer until a specific moment, it is possible feeding the
+    /// return value of this function into the [`fill_buffer_at`](fn@Module::fill_buffer_at)
+    /// function.
+    ///
+    /// In the contrary, this function always starts with the clock at zero (the beginning).
+    ///
+    /// # Arguments
+    /// * `buffer` - The buffer to fill/modify.
+    /// * `auxiliaries` - A vector with the auxiliary inputs for the operation. Can be empty.
+    ///
+    /// # Returns
+    /// The last value of the clock.
     // TODO stereo
-    fn fill_buffer_w_aux(
+    fn fill_buffer(&mut self, buffer: &mut Vec<f32>, auxiliaries: Vec<AuxiliaryInput>) -> f32 {
+        self.fill_buffer_at(buffer, 0.0, auxiliaries)
+    }
+
+    /// Does the same as [`fill_buffer`](fn@Module::fill_buffer) function though a starting time
+    /// for the clock can be specified.
+    ///
+    /// Please read [`fill_buffer`](fn@Module::fill_buffer) for more information.
+    /// # Arguments
+    /// * `buffer` - The buffer to fill/modify.
+    /// * `auxiliaries` - A vector with the auxiliary inputs for the operation. Can be empty.
+    /// * `start_at` - The value of the clock where it should start.
+    ///
+    /// # Returns
+    /// The last value of the clock.
+    fn fill_buffer_at(
         &mut self,
         buffer: &mut Vec<f32>,
-        auxiliaries: Option<Vec<&mut AuxiliaryInput>>,
-    ) {
+        start_at: f32,
+        mut auxiliaries: Vec<AuxiliaryInput>,
+    ) -> f32 {
         #[cfg(feature = "verbose_modules")]
         {
             info!("<b>Running module <cyan>{}</>", self.get_name());
         }
 
+        // TODO modularize this function not to reimplement the unnecessary.
+        // maybe receive a closure with popping the values?
         warn!("<b>A <u>custom implementation</><b> for buffer filling with auxiliary inputs is recommended for better <yellow>performance</><b>.</>");
 
-        // AUXILIARY INPUTS MANAGEMENT STARTS HERE
-        // Map parameters
-        let mut temp_aux: Vec<Option<AuxiliaryInput>> =
-            Vec::with_capacity(self.get_parameter_count());
-
-        if let Some(auxiliaries) = auxiliaries {
-            for param in self.get_parameters() {
-                if let Some(x) = auxiliaries.iter().find(|aux| aux.tag == param.tag) {
-                    temp_aux.push(Some((**x).clone()));
-                } else {
-                    temp_aux.push(None);
-                }
-            }
-        }
+        let mut clock = Clock::new(44100); // TODO add get_sample_rate to Module trait
+        clock.tick = start_at;
 
         #[cfg(feature = "verbose_modules")]
         {
-            info!("<b>Auxiliary list: {} items</>", temp_aux.len());
-            for item in temp_aux.iter() {
-                if item.is_none() {
-                    info!("  |_ <red>No item</>");
-                } else {
-                    info!("  |_ <green>{} aux found</>", item.as_ref().unwrap().tag);
-                }
+            info!("<b>Auxiliary list: {} items</>", auxiliaries.len());
+            for aux in auxiliaries.iter() {
+                info!("  |_ <green>{} aux found</>", aux.get_tag());
             }
             println!();
         }
 
-        // Create closure
-        let mut pop_auxiliaries = move || -> Vec<Option<f32>> {
-            let mut values = Vec::with_capacity((&temp_aux).len());
+        // We reverse the auxiliary order because we are popping.
+        // We want always the first element of the vector, nonetheless,
+        // popping is faster than removing from the beginning.
+        // As we don't need to access both ends of the vector, it is
+        // easier just to reverse it.
+        auxiliaries.reverse();
 
-            for item in temp_aux.iter_mut() {
-                match item {
-                    Some(x) => values.push(item.as_mut().unwrap().pop()),
-                    None => values.push(None),
-                }
-            }
+        // FILLING THE BUFFER IS THIS EASY
+        buffer.iter_mut().for_each(|sample| {
+            self.update_parameters(pop_auxiliaries(
+                &mut auxiliaries,
+                self.get_current_parameter_values(),
+            ));
+            *sample = self.get_sample(*sample, clock.inc())
+        });
 
-            values
-        };
-        // AUXILIARY INPUTS MANAGEMENT ENDS HERE
-
-        #[cfg(feature = "module_values")]
-        let mut count = 0;
-
-        for item in buffer {
-            // Pre-processing operations
-            // Buffer processing
-            *item = self.behaviour(*item);
-
-            let parameters = self.get_parameters_mutable();
-            let mut new_values = pop_auxiliaries();
-            new_values.reverse(); // We reverse it because later we use pop function
-
-            for parameter in parameters {
-                let previous_value = parameter.get_value();
-
-                match new_values.pop().unwrap_or(None) {
-                    Some(new_value) => {
-                        #[cfg(feature = "module_values")]
-                        info!(
-                            "<b>Updating parameter <blue>{}</> <b>with {}</>",
-                            parameter.tag, new_value
-                        );
-                        parameter.set(new_value)
-                    }
-                    None => parameter.set(previous_value),
-                }
-            }
-
-            // POST-PROCESSING OPERATIONS
-            self.inc_clock();
-
-            #[cfg(feature = "module_values")]
-            {
-                count = (count + 1) % 10;
-                info!("<b>[ {} ]</> {}", count, item);
-            }
-        }
-    }
-
-    fn fill_buffer(&mut self, buffer: &mut Vec<f32>) {
-        self.fill_buffer_w_aux(buffer, None);
+        clock.get_value()
     }
 
     /// Defines the behaviour of the module. Is it going to generate data? Is it going to clip the
@@ -162,7 +179,7 @@ pub trait Module {
     /// * `in_data`: the sample to modify, if any. Won't use it if creating a generator module.
     /// # Returns
     /// A generated or modified sample.
-    fn behaviour(&self, in_data: f32) -> f32;
+    fn behaviour(&self, in_data: f32, time: f32) -> f32;
 
     /// Adds a parameter to the list of parameters. If the tag is already in the list,
     /// the operation gets rejected.
@@ -219,16 +236,148 @@ pub trait Module {
         self.get_parameters().len()
     }
 
-    /// Will define how the clock goes forward. Useful for timed operations. Must increase by one
-    /// and start at zero to work properly with auxiliary inputs
-    fn inc_clock(&mut self) {
-        self.get_clock().inc();
+    fn get_current_parameter_values(&self) -> HashMap<String, f32> {
+        self.get_parameters()
+            .iter()
+            .map(|p| (p.get_tag().clone(), p.get_value()))
+            .collect()
     }
-
-    fn get_clock(&mut self) -> &mut ModuleClock; // TODO: remove? tick already enforces the clock in the struct
 
     // USEFUL FOR DEBUGGING
     fn get_name(&self) -> String;
+}
+
+pub trait ModuleWrapper {
+    fn gen_sample(&mut self, time: f32);
+    fn get_name(&self) -> String;
+    fn get_producer(&self) -> &ModuleProducer;
+}
+
+/// A **linker module** is a module able to consume data from modules, process it, and deliver it
+/// to another module. An example of linker module would be an effect module or
+/// an [ADSR](https://en.wikipedia.org/wiki/Envelope_(music)) module.
+///
+/// An example of **not** linker module would be an [generator module](struct@GeneratorModuleWrapper),
+/// which does not use any input sample but instead generates one.
+///
+/// The [`LinkerModuleWrapper`](struct@LinkerModuleWrapper) does wrap a [Module] including
+/// a [Consumer](https://docs.rs/ringbuf/latest/ringbuf/consumer/struct.Consumer.html) and a
+/// [Producer](https://docs.rs/ringbuf/latest/ringbuf/producer/struct.Producer.html) of a
+/// *ring buffer*. This allows the delivery of samples among modules in real time.
+///
+/// The *producer* of a linker module must be connected to the *consumer* of the **next module** in
+/// the chain, and the *consumer* of the linker module must be connected to the *producer* of the
+/// **previous module** in the chain.
+pub struct LinkerModuleWrapper {
+    module: Box<dyn Module>,
+    consumer: ModuleConsumer,
+    producer: ModuleProducer,
+    aux_inputs: Vec<AuxiliaryInput>,
+}
+
+impl LinkerModuleWrapper {
+    pub fn new(
+        module: Box<dyn Module>,
+        consumer: ModuleConsumer,
+        producer: ModuleProducer,
+        aux_inputs: Vec<AuxiliaryInput>,
+    ) -> Self {
+        Self {
+            module,
+            consumer,
+            producer,
+            aux_inputs,
+        }
+    }
+}
+
+impl ModuleWrapper for LinkerModuleWrapper {
+    fn gen_sample(&mut self, time: f32) {
+        if self.consumer.is_empty() {
+            warn!("<b>Buffer <yellow>empty</><b> in Linker Module.</>");
+            warn!("  |_ name: {}", self.module.get_name());
+        } else {
+            if self.producer.is_full() {
+                warn!("<b>Buffer <yellow>full</><b> in Linker Module.</>");
+                warn!("  |_ name: {}", self.module.get_name());
+            } else {
+                let prev = self.consumer.pop().unwrap();
+
+                let aux_values = pop_auxiliaries(
+                    &mut self.aux_inputs,
+                    self.module.get_current_parameter_values(),
+                );
+
+                let value = self.module.get_sample_w_aux(prev, time, aux_values);
+
+                self.producer.push(value).unwrap();
+            }
+        }
+    }
+
+    fn get_name(&self) -> String {
+        self.module.get_name().clone()
+    }
+
+    fn get_producer(&self) -> &ModuleProducer {
+        &self.producer
+    }
+}
+
+/// A **generator module** is a module able to generate and deliver data to another module.
+/// It should always be the first element of the chain. An example of generator module would be an
+/// [Oscillator](struct@crate::Oscillator) module.
+///
+/// The [`GeneratorModuleWrapper`](struct@GeneratorModuleWrapper) does wrap a [Module] including
+/// a [Producer](https://docs.rs/ringbuf/latest/ringbuf/producer/struct.Producer.html) of a
+/// *ring buffer*. This allows the delivery of samples to another module in real time.
+///
+/// The *producer* of a generator module must be connected to the *consumer* of the **next module** in
+/// the chain.
+pub struct GeneratorModuleWrapper {
+    module: Box<dyn Module>,
+    producer: ModuleProducer,
+    aux_inputs: Vec<AuxiliaryInput>,
+}
+
+impl GeneratorModuleWrapper {
+    pub fn new(
+        module: Box<dyn Module>,
+        producer: ModuleProducer,
+        aux_inputs: Vec<AuxiliaryInput>,
+    ) -> Self {
+        Self {
+            module,
+            producer,
+            aux_inputs,
+        }
+    }
+}
+
+impl ModuleWrapper for GeneratorModuleWrapper {
+    fn gen_sample(&mut self, time: f32) {
+        if self.producer.is_full() {
+            warn!("<b>Buffer <yellow>full</><b> in Generator Module.</>");
+            warn!("  |_ name: {}", self.module.get_name());
+        } else {
+            let aux_values = pop_auxiliaries(
+                &mut self.aux_inputs,
+                self.module.get_current_parameter_values(),
+            );
+
+            let value = self.module.get_sample_w_aux(0.0, time, aux_values);
+
+            self.producer.push(value).unwrap();
+        }
+    }
+
+    fn get_name(&self) -> String {
+        self.module.get_name().clone()
+    }
+
+    fn get_producer(&self) -> &ModuleProducer {
+        &self.producer
+    }
 }
 
 /// Parameters are what control the behaviour of a module. For example, in an oscillator, some
@@ -269,6 +418,16 @@ impl Parameter {
     pub fn set(&mut self, value: f32) {
         if value <= self.max && value >= self.min {
             self.current = value;
+        } else {
+            #[cfg(feature = "verbose_modules")]
+            {
+                warn!("<b>Value <yellow>out of range</><b>.</>");
+                warn!("  |_ Parameter: <yellow>{}</>", self.tag);
+                warn!("  |_ Input value: <red>{}</>", value);
+                warn!("  |_ Valid range: <green>[{}, {}]</>", self.min, self.max);
+                warn!("  |_ Value kept back.");
+                println!();
+            }
         }
     }
 
@@ -277,6 +436,7 @@ impl Parameter {
         // if value exceeds the maximum, keep the max value.
         if self.current + self.step > self.max {
             self.current = self.max;
+            warn!("<b>Trying to <yellow>exceed</> <b>the value over the maximum.</>");
 
         // otherwise, keep increasing it
         } else {
@@ -289,6 +449,7 @@ impl Parameter {
         // if value exceeds the minimum, keep the min value.
         if self.current - self.step < self.min {
             self.current = self.min;
+            warn!("<b>Trying to <yellow>exceed</> <b>the value under the minimum.</>");
 
         // otherwise, keep lowering it
         } else {
@@ -397,7 +558,6 @@ impl ParameterBuilder {
     }
 }
 
-#[derive(Clone, Debug)]
 /// An **Auxiliary Input** allows routing the output of a module to another one. They can also be
 /// understood as **side chain connections**.
 /// # Parameters
@@ -415,7 +575,7 @@ pub struct AuxiliaryInput {
     /// [Parameter] to which the Auxiliary Input shall be linked with (must match with the tag field of the parameter in order to work).
     tag: String,
     /// The buffer with the output of the **modulator** module.
-    buffer: Vec<f32>,
+    data: AuxDataHolder,
     /// The *maximum* value of the **input** of the parameter. Don't need to match with the max of
     /// the associated parameter, but must be lower or equal to work properly.
     max: f32,
@@ -434,9 +594,15 @@ impl AuxiliaryInput {
     /// from the values ranging from -1 to 1 that every module should output into the max and
     /// min values specified when built.
     fn pop(&mut self) -> Option<f32> {
-        match self.buffer.pop() {
-            Some(x) => Some(self.translate(x)),
-            None => None,
+        match &mut (self.data) {
+            AuxDataHolder::Batch(ref mut buffer) => match buffer.pop() {
+                Some(x) => Some(self.translate(x)),
+                None => None,
+            },
+            AuxDataHolder::RealTime(ref mut consumer) => match consumer.pop() {
+                Some(x) => Some(self.translate(x)),
+                None => None,
+            },
         }
     }
 
@@ -487,7 +653,7 @@ pub struct AuxInputBuilder {
     /// Tag matching the [Parameter] field.
     tag: String,
     /// Buffer to hold the data of the previous module.
-    buffer: Vec<f32>,
+    data: AuxDataHolder,
     /// Maximum value. Defaults on 1.0
     max: Option<f32>,
     /// Minimum value. Defaults on 0.0
@@ -500,10 +666,10 @@ impl AuxInputBuilder {
     /// # Arguments
     /// * `tag` - Name of the parameter linked with the Aux Input.
     /// * `buffer` - Buffer containing the data generated by the previous module (modulator).
-    pub fn new(tag: &str, buffer: Vec<f32>) -> Self {
+    pub fn new(tag: &str, data: AuxDataHolder) -> Self {
         Self {
             tag: tag.to_string(),
-            buffer,
+            data,
             max: None,
             min: None,
         }
@@ -521,6 +687,12 @@ impl AuxInputBuilder {
         self
     }
 
+    pub fn with_all_yaml(mut self, max: Option<f32>, min: Option<f32>) -> Self {
+        self.min = min;
+        self.max = max;
+        self
+    }
+
     /// Generates an [AuxiliaryInput] from the values specified.
     pub fn build(self) -> Result<AuxiliaryInput, String> {
         let max = self.max.unwrap_or(1.0);
@@ -532,289 +704,392 @@ impl AuxInputBuilder {
 
         Ok(AuxiliaryInput {
             tag: self.tag,
-            buffer: self.buffer,
+            data: self.data,
             max,
             min,
         })
     }
 }
 
-#[cfg(test)]
-mod parameter_builder_tests {
-    use crate::module::{Parameter, ParameterBuilder};
-    use log::info;
-    use simplelog::__private::paris::Logger;
+pub enum AuxDataHolder {
+    Batch(Vec<f32>),
+    RealTime(ModuleConsumer),
+}
 
-    fn get_logger() -> Logger<'static> {
-        Logger::new()
+impl AuxDataHolder {
+    pub fn is_batch(&self) -> bool {
+        matches!(*self, Self::Batch(_))
     }
 
-    #[test]
-    fn test_default() {
-        let mut logger = get_logger();
-
-        logger.info("<b>Running test for parameter builder with no arguments</>");
-
-        let tested_param = ParameterBuilder::new(String::from("test")).build().unwrap();
-        let testing_param = Parameter {
-            max: 1.0,
-            min: 0.0,
-            step: 0.1,
-            default: 0.0,
-            current: 0.0,
-            tag: "test".to_string(),
-        };
-
-        assert_eq!(
-            tested_param, testing_param,
-            "Empty constructor for Parameter Builder failed"
-        );
-
-        logger.success("<b>Test pass</>");
+    pub fn is_real_time(&self) -> bool {
+        matches!(*self, Self::RealTime(_))
     }
 
-    #[test]
-    fn test_with_all_args() {
-        let mut logger = get_logger();
-        logger.info("<b>Running test for parameter builder with all arguments</>");
-
-        let tested_param = ParameterBuilder::new(String::from("test"))
-            .with_max(2.0)
-            .with_min(1.0)
-            .with_default(1.5)
-            .with_step(0.3)
-            .build()
-            .unwrap();
-
-        let testing_param = Parameter {
-            max: 2.0,
-            min: 1.0,
-            step: 0.3,
-            default: 1.5,
-            current: 1.5,
-            tag: "test".to_string(),
-        };
-
-        assert_eq!(
-            tested_param, testing_param,
-            "Constructor with all arguments for Parameter Builder failed"
-        );
-
-        logger.success("<b>Test pass</>");
+    #[cfg(test)]
+    pub fn get_buffer(&self) -> Option<&Vec<f32>> {
+        match self {
+            Self::Batch(buffer) => Some(buffer),
+            _ => None,
+        }
     }
 
-    #[test]
-    #[should_panic]
-    fn test_invalid_range_greater() {
-        ParameterBuilder::new(String::from("test"))
-            .with_min(1.0)
-            .with_max(0.0)
-            .build()
-            .unwrap();
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_invalid_range_equal() {
-        ParameterBuilder::new(String::from("test"))
-            .with_min(0.0)
-            .with_max(0.0)
-            .build()
-            .unwrap();
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_invalid_default_min() {
-        ParameterBuilder::new(String::from("test"))
-            .with_min(1.0)
-            .with_default(0.5)
-            .build()
-            .unwrap();
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_invalid_default_max() {
-        ParameterBuilder::new(String::from("test"))
-            .with_max(0.0)
-            .with_default(0.5)
-            .build()
-            .unwrap();
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_invalid_step() {
-        ParameterBuilder::new(String::from("test"))
-            .with_max(1.0)
-            .with_min(0.0)
-            .with_step(1.5)
-            .build()
-            .unwrap();
+    #[cfg(test)]
+    pub fn get_consumer(&self) -> Option<&ModuleConsumer> {
+        match self {
+            Self::RealTime(consumer) => Some(&consumer),
+            _ => None,
+        }
     }
 }
+
+/// A structure with some bundled methods to easily manage time synchronization.
+pub struct Clock {
+    tick: f32,
+    sample_rate: f32,
+}
+
+impl Clock {
+    pub fn new(sample_rate: i32) -> Self {
+        Self {
+            tick: 0.0,
+            sample_rate: sample_rate as f32,
+        }
+    }
+
+    pub fn get_value(&self) -> f32 {
+        self.tick
+    }
+
+    pub fn post_inc(&mut self) -> f32 {
+        self.tick = (self.tick + 1.0) % self.sample_rate;
+        self.tick
+    }
+
+    pub fn inc(&mut self) -> f32 {
+        let prev = self.tick;
+        self.tick = (self.tick + 1.0) % self.sample_rate;
+        prev
+    }
+}
+
 #[cfg(test)]
-mod parameter_tests {
+mod test {
+    use super::AuxDataHolder::Batch;
+    use super::{AuxInputBuilder, AuxiliaryInput};
     use super::{Parameter, ParameterBuilder};
 
-    fn get_parameter() -> Parameter {
-        ParameterBuilder::new("test".to_string())
-            .with_max(1.2)
-            .with_min(0.1)
-            .with_default(0.5)
-            .with_step(0.2)
-            .build()
-            .unwrap()
+    mod parameter_builder_tests {
+        use super::*;
+        use log::info;
+        use simplelog::__private::paris::Logger;
+
+        fn get_logger() -> Logger<'static> {
+            Logger::new()
+        }
+
+        #[test]
+        fn test_default() {
+            let mut logger = get_logger();
+
+            logger.info("<b>Running test for parameter builder with no arguments</>");
+
+            let tested_param = ParameterBuilder::new(String::from("test")).build().unwrap();
+            let testing_param = Parameter {
+                max: 1.0,
+                min: 0.0,
+                step: 0.1,
+                default: 0.0,
+                current: 0.0,
+                tag: "test".to_string(),
+            };
+
+            assert_eq!(
+                tested_param, testing_param,
+                "Empty constructor for Parameter Builder failed"
+            );
+
+            logger.success("<b>Test pass</>");
+        }
+
+        #[test]
+        fn test_with_all_args() {
+            let mut logger = get_logger();
+            logger.info("<b>Running test for parameter builder with all arguments</>");
+
+            let tested_param = ParameterBuilder::new(String::from("test"))
+                .with_max(2.0)
+                .with_min(1.0)
+                .with_default(1.5)
+                .with_step(0.3)
+                .build()
+                .unwrap();
+
+            let testing_param = Parameter {
+                max: 2.0,
+                min: 1.0,
+                step: 0.3,
+                default: 1.5,
+                current: 1.5,
+                tag: "test".to_string(),
+            };
+
+            assert_eq!(
+                tested_param, testing_param,
+                "Constructor with all arguments for Parameter Builder failed"
+            );
+
+            logger.success("<b>Test pass</>");
+        }
+
+        #[test]
+        #[should_panic]
+        fn test_invalid_range_greater() {
+            ParameterBuilder::new(String::from("test"))
+                .with_min(1.0)
+                .with_max(0.0)
+                .build()
+                .unwrap();
+        }
+
+        #[test]
+        #[should_panic]
+        fn test_invalid_range_equal() {
+            ParameterBuilder::new(String::from("test"))
+                .with_min(0.0)
+                .with_max(0.0)
+                .build()
+                .unwrap();
+        }
+
+        #[test]
+        #[should_panic]
+        fn test_invalid_default_min() {
+            ParameterBuilder::new(String::from("test"))
+                .with_min(1.0)
+                .with_default(0.5)
+                .build()
+                .unwrap();
+        }
+
+        #[test]
+        #[should_panic]
+        fn test_invalid_default_max() {
+            ParameterBuilder::new(String::from("test"))
+                .with_max(0.0)
+                .with_default(0.5)
+                .build()
+                .unwrap();
+        }
+
+        #[test]
+        #[should_panic]
+        fn test_invalid_step() {
+            ParameterBuilder::new(String::from("test"))
+                .with_max(1.0)
+                .with_min(0.0)
+                .with_step(1.5)
+                .build()
+                .unwrap();
+        }
     }
 
-    #[test]
-    fn test_get_tag() {
-        let parameter = get_parameter();
+    mod parameter_tests {
+        use super::*;
+        fn get_parameter() -> Parameter {
+            ParameterBuilder::new("test".to_string())
+                .with_max(1.2)
+                .with_min(0.1)
+                .with_default(0.5)
+                .with_step(0.2)
+                .build()
+                .unwrap()
+        }
 
-        assert_eq!(parameter.get_tag(), "test");
+        #[test]
+        fn test_get_tag() {
+            let parameter = get_parameter();
+
+            assert_eq!(parameter.get_tag(), "test");
+        }
+
+        #[test]
+        fn test_get_value() {
+            let mut parameter = get_parameter();
+
+            assert_eq!(parameter.get_value(), 0.5, "Current value mismatch");
+            parameter.set(0.1);
+            assert_eq!(parameter.get_value(), 0.1, "Current value mismatch");
+        }
+
+        #[test]
+        fn test_set_value() {
+            let mut parameter = get_parameter();
+
+            parameter.set(1.2);
+            assert_eq!(parameter.get_value(), 1.2, "Current value mismatch");
+            parameter.set(-1.0);
+            assert_eq!(parameter.get_value(), 1.2, "Smaller than check wrong");
+            parameter.set(10.0);
+            assert_eq!(parameter.get_value(), 1.2, "Greater than check wrong");
+        }
+
+        #[test]
+        fn test_inc() {
+            let mut parameter = get_parameter();
+
+            assert_eq!(parameter.get_value(), 0.5, "Default item is different");
+            parameter.inc();
+            assert_eq!(parameter.get_value(), 0.7, "Decrease not working");
+
+            parameter.set(1.1);
+            parameter.inc();
+            assert_eq!(
+                parameter.get_value(),
+                parameter.max,
+                "Increase out of bounds"
+            )
+        }
+
+        #[test]
+        fn test_dec() {
+            let mut parameter = get_parameter();
+
+            assert_eq!(parameter.get_value(), 0.5, "Default item is different");
+            parameter.dec();
+            assert_eq!(parameter.get_value(), 0.3, "Decrease not working");
+
+            parameter.set(0.2);
+            parameter.dec();
+            assert_eq!(
+                parameter.get_value(),
+                parameter.min,
+                "Decrease out of bounds"
+            )
+        }
     }
 
-    #[test]
-    fn test_get_value() {
-        let mut parameter = get_parameter();
+    mod auxiliary_input_builder_tests {
+        use super::*;
 
-        assert_eq!(parameter.get_value(), 0.5, "Current value mismatch");
-        parameter.set(0.1);
-        assert_eq!(parameter.get_value(), 0.1, "Current value mismatch");
+        #[test]
+        fn test_default() {
+            let aux = AuxInputBuilder::new("test", Batch(vec![0.0]))
+                .build()
+                .unwrap();
+            assert_eq!(aux.tag, "test", "Default tag mismatch");
+            assert_eq!(
+                *aux.data.get_buffer().unwrap(),
+                vec![0.0],
+                "Default buffer mismatch"
+            );
+            assert_eq!(aux.max, 1.0, "Default max mismatch");
+            assert_eq!(aux.min, 0.0, "Default min mismatch");
+        }
+
+        #[test]
+        fn test_with_all() {
+            let aux = AuxInputBuilder::new("test", Batch(vec![0.0]))
+                .with_max(10.0)
+                .with_min(5.0)
+                .build()
+                .unwrap();
+
+            assert_eq!(aux.tag, "test", "Default tag mismatch");
+            assert_eq!(
+                *aux.data.get_buffer().unwrap(),
+                vec![0.0],
+                "Default buffer mismatch"
+            );
+            assert_eq!(aux.max, 10.0, "Test max mismatch");
+            assert_eq!(aux.min, 5.0, "Default min mismatch");
+        }
+
+        #[test]
+        #[should_panic]
+        fn test_with_invalid_range() {
+            AuxInputBuilder::new("test", Batch(vec![0.0]))
+                .with_max(0.0)
+                .with_min(1.0)
+                .build()
+                .unwrap();
+        }
     }
 
-    #[test]
-    fn test_set_value() {
-        let mut parameter = get_parameter();
+    mod auxiliary_input_test {
+        use super::*;
+        use crate::module::AuxDataHolder::RealTime;
+        use crate::module::{ModuleConsumer, ModuleProducer};
+        use ringbuf::HeapRb;
 
-        parameter.set(1.2);
-        assert_eq!(parameter.get_value(), 1.2, "Current value mismatch");
-        parameter.set(-1.0);
-        assert_eq!(parameter.get_value(), 1.2, "Smaller than check wrong");
-        parameter.set(10.0);
-        assert_eq!(parameter.get_value(), 1.2, "Greater than check wrong");
+        fn get_aux() -> AuxiliaryInput {
+            let buffer: Vec<f32> = vec![-1.0, 0.0, 1.0];
+            AuxInputBuilder::new("test", Batch(buffer))
+                .with_max(20.0)
+                .with_min(10.0)
+                .build()
+                .unwrap()
+        }
+
+        fn get_aux_rt(cons: ModuleConsumer) -> AuxiliaryInput {
+            AuxInputBuilder::new("test", RealTime(cons))
+                .with_max(20.0)
+                .with_min(10.0)
+                .build()
+                .unwrap()
+        }
+
+        #[test]
+        fn test_get_tag() {
+            let aux = get_aux();
+
+            assert_eq!(aux.get_tag(), "test", "Default name mismatch");
+        }
+
+        #[test]
+        fn test_pop_aux() {
+            let mut aux = get_aux();
+
+            assert_eq!(aux.pop(), Some(aux.max));
+            assert_eq!(aux.pop(), Some(15.0));
+            assert_eq!(aux.pop(), Some(aux.min));
+            assert_eq!(aux.pop(), None);
+        }
+
+        #[test]
+        fn test_pop_rt_aux() {
+            let rb: HeapRb<f32> = HeapRb::new(4);
+            let (mut p, c) = rb.split();
+            let mut rt_aux = get_aux_rt(c);
+
+            p.push(1.0).unwrap();
+            p.push(0.0).unwrap();
+            p.push(-1.0).unwrap();
+
+            assert_eq!(rt_aux.pop().unwrap(), rt_aux.max);
+            assert_eq!(rt_aux.pop().unwrap(), 15.0);
+            assert_eq!(rt_aux.pop().unwrap(), rt_aux.min);
+        }
+
+        #[test]
+        fn test_translation() {
+            let buffer: Vec<f32> = vec![-1.0, -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, 1.0];
+            let mut aux = AuxInputBuilder::new("test", Batch(buffer))
+                .with_min(-10.0)
+                .with_max(10.0)
+                .build()
+                .unwrap();
+
+            assert_eq!(aux.pop(), Some(aux.max));
+            assert_eq!(aux.pop(), Some(7.5));
+            assert_eq!(aux.pop(), Some(5.0));
+            assert_eq!(aux.pop(), Some(2.5));
+            assert_eq!(aux.pop(), Some(0.0));
+            assert_eq!(aux.pop(), Some(-2.5));
+            assert_eq!(aux.pop(), Some(-5.0));
+            assert_eq!(aux.pop(), Some(-7.5));
+            assert_eq!(aux.pop(), Some(aux.min));
+        }
     }
 
-    #[test]
-    fn test_inc() {
-        let mut parameter = get_parameter();
-
-        assert_eq!(parameter.get_value(), 0.5, "Default item is different");
-        parameter.inc();
-        assert_eq!(parameter.get_value(), 0.7, "Decrease not working");
-
-        parameter.set(1.1);
-        parameter.inc();
-        assert_eq!(
-            parameter.get_value(),
-            parameter.max,
-            "Increase out of bounds"
-        )
-    }
-
-    #[test]
-    fn test_dec() {
-        let mut parameter = get_parameter();
-
-        assert_eq!(parameter.get_value(), 0.5, "Default item is different");
-        parameter.dec();
-        assert_eq!(parameter.get_value(), 0.3, "Decrease not working");
-
-        parameter.set(0.2);
-        parameter.dec();
-        assert_eq!(
-            parameter.get_value(),
-            parameter.min,
-            "Decrease out of bounds"
-        )
-    }
-}
-
-#[cfg(test)]
-mod auxiliary_input_builder_tests {
-    use super::AuxInputBuilder;
-
-    #[test]
-    fn test_default() {
-        let aux = AuxInputBuilder::new("test", vec![0.0]).build().unwrap();
-        assert_eq!(aux.tag, "test", "Default tag mismatch");
-        assert_eq!(aux.buffer, vec![0.0], "Default buffer mismatch");
-        assert_eq!(aux.max, 1.0, "Default max mismatch");
-        assert_eq!(aux.min, 0.0, "Default min mismatch");
-    }
-
-    #[test]
-    fn test_with_all() {
-        let aux = AuxInputBuilder::new("test", vec![0.0])
-            .with_max(10.0)
-            .with_min(5.0)
-            .build()
-            .unwrap();
-
-        assert_eq!(aux.tag, "test", "Default tag mismatch");
-        assert_eq!(aux.buffer, vec![0.0], "Default buffer mismatch");
-        assert_eq!(aux.max, 10.0, "Test max mismatch");
-        assert_eq!(aux.min, 5.0, "Default min mismatch");
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_with_invalid_range() {
-        AuxInputBuilder::new("test", vec![0.0])
-            .with_max(0.0)
-            .with_min(1.0)
-            .build()
-            .unwrap();
-    }
-}
-#[cfg(test)]
-mod auxiliary_input_test {
-    use super::{AuxInputBuilder, AuxiliaryInput};
-
-    fn get_aux() -> AuxiliaryInput {
-        let buffer: Vec<f32> = vec![-1.0, 0.0, 1.0];
-        AuxInputBuilder::new("test", buffer)
-            .with_max(20.0)
-            .with_min(10.0)
-            .build()
-            .unwrap()
-    }
-
-    #[test]
-    fn test_get_tag() {
-        let aux = get_aux();
-
-        assert_eq!(aux.get_tag(), "test", "Default name mismatch");
-    }
-
-    #[test]
-    fn test_pop() {
-        let mut aux = get_aux();
-
-        assert_eq!(aux.pop(), Some(aux.max));
-        assert_eq!(aux.pop(), Some(15.0));
-        assert_eq!(aux.pop(), Some(aux.min));
-        assert_eq!(aux.pop(), None);
-    }
-
-    #[test]
-    fn test_translation() {
-        let buffer: Vec<f32> = vec![-1.0, -0.75, -0.5, -0.25, 0.0, 0.25, 0.5, 0.75, 1.0];
-        let mut aux = AuxInputBuilder::new("test", buffer)
-            .with_min(-10.0)
-            .with_max(10.0)
-            .build()
-            .unwrap();
-
-        assert_eq!(aux.pop(), Some(aux.max));
-        assert_eq!(aux.pop(), Some(7.5));
-        assert_eq!(aux.pop(), Some(5.0));
-        assert_eq!(aux.pop(), Some(2.5));
-        assert_eq!(aux.pop(), Some(0.0));
-        assert_eq!(aux.pop(), Some(-2.5));
-        assert_eq!(aux.pop(), Some(-5.0));
-        assert_eq!(aux.pop(), Some(-7.5));
-        assert_eq!(aux.pop(), Some(aux.min));
-    }
+    mod aux_data_holder_test {}
 }
