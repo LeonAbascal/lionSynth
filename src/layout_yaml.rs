@@ -1,4 +1,4 @@
-use crate::back_end::{get_preferred_config, Channels};
+use crate::back_end::{get_preferred_config, write_data, Channels};
 use crate::bundled_modules::debug::*;
 use crate::bundled_modules::*;
 use crate::module::{
@@ -7,16 +7,17 @@ use crate::module::{
 };
 use crate::SAMPLE_RATE;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use cpal::{Device, FromSample, Sample, SampleFormat, SampleRate, StreamConfig};
+use cpal::{Device, SampleFormat, SampleRate, StreamConfig};
 use ringbuf::HeapRb;
 use simplelog::{error, info, warn};
 use std::collections::{HashMap, LinkedList};
+use std::fs;
 use std::thread::sleep;
 use std::time::Duration;
-use std::{fs, thread};
 use yaml_rust::{Yaml, YamlLoader};
 
-const RING_BUFFER_CAPACITY: usize = 10;
+// TODO test size. Different signal durations may affected playback
+const BATCH_SIZE_RT: usize = 1000;
 
 struct ChainCell {
     from_module: Option<i64>,
@@ -56,8 +57,6 @@ impl CoordinatorEntity {
 }
 
 fn load_yaml(file: &str, first_module_index: &mut i64) -> HashMap<i64, ChainCell> {
-    println!(); // Logger cleanspace
-
     let mut first_module: Option<i64> = None;
     let path = format!("layouts/{}", file);
     info!("<b>Loading data from <red>{}</><b>.</>", path);
@@ -251,36 +250,21 @@ pub fn buffer_from_yaml(file: &str, buffer_length: usize) -> Vec<f32> {
     fill_buffer(&mut module_chain, first_module, buffer_length)
 }
 
-pub fn play_from_yaml(file: &str, signal_duration: u64) -> Result<(), anyhow::Error> {
+pub fn play_from_yaml(
+    file: &str,
+    signal_duration: i32,
+    sample_rate: i32,
+) -> Result<(), anyhow::Error> {
     let mut first_module = 0i64;
     let mut module_chain = load_yaml(file, &mut first_module);
     let mut wrapper_chain: LinkedList<Box<dyn ModuleWrapper>> = LinkedList::new();
 
-    let ring_buffer: HeapRb<f32> = HeapRb::new(RING_BUFFER_CAPACITY);
+    let ring_buffer: HeapRb<f32> = HeapRb::new(BATCH_SIZE_RT);
     let (prod, mut cpal_consumer) = ring_buffer.split();
 
     build_wrapper_chain(&mut module_chain, first_module, &mut wrapper_chain, prod);
 
     let mut coordinator = CoordinatorEntity::new(SAMPLE_RATE, wrapper_chain);
-
-    // let handle_a = thread::spawn(|| {
-    //     let mut coordinator = coord_wrapper.lock().unwrap();
-    //     coordinator.tick();
-    // });
-    //
-    // let handle_b = thread::spawn(|| {
-    //     let mut coordinator = coord_wrapper.lock().unwrap();
-    //     coordinator.tick();
-    // });
-    //
-    // handle_a.join().unwrap();
-    // handle_b.join().unwrap();
-
-    /*for i in 0..5 {
-        coordinator.tick();
-        let value = cons.pop().unwrap_or(0.0);
-        info!("OUT TO OS: <blue>{}</>", value);
-    }*/
 
     // CPAL CONFIGURATION
     let mut logger = simplelog::__private::paris::Logger::new();
@@ -312,7 +296,7 @@ pub fn play_from_yaml(file: &str, signal_duration: u64) -> Result<(), anyhow::Er
     let stream = device.build_output_stream(
         &config,
         move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
-            write_data_yaml(data, channels, &mut next_value) //, &mut coordinator)
+            write_data(data, channels, &mut next_value)
         },
         err_fn,
         None,
@@ -323,7 +307,21 @@ pub fn play_from_yaml(file: &str, signal_duration: u64) -> Result<(), anyhow::Er
     logger.loading("<blue><info></><b> Playing sound</>");
     stream.play()?;
 
-    sleep(Duration::from_millis(signal_duration));
+    let mut count = 0;
+    while count < (signal_duration as f32 * sample_rate as f32 / 1000.0) as i32 {
+        if !coordinator
+            .wrapper_chain
+            .front()
+            .unwrap()
+            .get_producer()
+            .is_full()
+        {
+            coordinator.tick();
+            count += 1;
+        } else {
+            sleep(Duration::from_millis(5));
+        }
+    }
 
     logger.done();
 
@@ -368,25 +366,6 @@ pub fn play_from_yaml(file: &str, signal_duration: u64) -> Result<(), anyhow::Er
     // Another possible improvement is to have a thread for each branch.
     // We would need to think of branches and junctions, where junctions should
     // be understood as modules where more than one module meet.
-}
-
-/// This function fills the data in batches. Is called by the cpal when it considers timely.
-fn write_data_yaml<T>(output: &mut [T], channels: usize, next_sample: &mut dyn FnMut() -> f32)
-where
-    T: Sample + FromSample<f32>,
-{
-    info!("Called");
-    let mut count = 0;
-    for frame in output.chunks_mut(channels) {
-        // coordinator.tick(); // Makes the chain generate their own sample
-
-        let value: T = T::from_sample(next_sample());
-        for sample in frame.iter_mut() {
-            *sample = value;
-        }
-        count += 1;
-    }
-    info!("Frame count: {}", count);
 }
 
 // An optimization with threads would not be possible as a recursive function does not
@@ -438,7 +417,7 @@ fn build_wrapper_chain(
     producer: ModuleProducer,
 ) {
     // If current module has not
-    let mut current_module = module_chain.remove(&current_pos).unwrap();
+    let current_module = module_chain.remove(&current_pos).unwrap();
     let next_id = current_module.from_module;
 
     // AUXILIARIES
@@ -446,8 +425,8 @@ fn build_wrapper_chain(
 
     for aux_info in current_module.auxiliaries {
         let aux_id = aux_info.from_module;
-        let rb: HeapRb<f32> = HeapRb::new(RING_BUFFER_CAPACITY);
-        let (prod, mut cons) = rb.split();
+        let rb: HeapRb<f32> = HeapRb::new(BATCH_SIZE_RT);
+        let (prod, cons) = rb.split();
 
         let aux = AuxInputBuilder::new(&aux_info.linked_with, AuxDataHolder::RealTime(cons))
             .with_all_yaml(aux_info.max, aux_info.min)
@@ -460,8 +439,8 @@ fn build_wrapper_chain(
 
     if next_id.is_some() {
         // LINKER MODULE - RECURSIVE STEP
-        let rb: HeapRb<f32> = HeapRb::new(RING_BUFFER_CAPACITY);
-        let (prod, mut cons) = rb.split();
+        let rb: HeapRb<f32> = HeapRb::new(BATCH_SIZE_RT);
+        let (prod, cons) = rb.split();
         let wrapper = LinkerModuleWrapper::new(current_module.module, cons, producer, aux_list);
 
         // To ensure that the sample of the previous module is generated first

@@ -23,8 +23,8 @@ fn pop_auxiliaries(
                 Some(value) => value,
                 None => {
                     let prev_value = *current_values.get(&tag).unwrap();
-                    warn!("<b>Values of auxiliary list <yellow>exhausted</><b>. It is perfectly normal for the first samples of the chain.</>");
-                    info!("Defaulting to previous value: {}", prev_value);
+                    // warn!("<b>Values of auxiliary list <yellow>exhausted</><b>. It is perfectly normal for the first samples of the chain.</>");
+                    // warn!("Defaulting to previous value: {}", prev_value);
                     prev_value // Returns the previous value
                 }
             };
@@ -249,6 +249,8 @@ pub trait Module {
 
 pub trait ModuleWrapper {
     fn gen_sample(&mut self, time: f32);
+    fn get_name(&self) -> String;
+    fn get_producer(&self) -> &ModuleProducer;
 }
 
 /// A **linker module** is a module able to consume data from modules, process it, and deliver it
@@ -292,12 +294,12 @@ impl LinkerModuleWrapper {
 impl ModuleWrapper for LinkerModuleWrapper {
     fn gen_sample(&mut self, time: f32) {
         if self.consumer.is_empty() {
-            error!("<b>Buffer <red>empty</><b> in Linker Module.</>");
-            error!("  |_ name: {}", self.module.get_name());
+            warn!("<b>Buffer <yellow>empty</><b> in Linker Module.</>");
+            warn!("  |_ name: {}", self.module.get_name());
         } else {
             if self.producer.is_full() {
-                error!("<b>Buffer <red>full</><b> in Linker Module.</>");
-                error!("  |_ name: {}", self.module.get_name());
+                warn!("<b>Buffer <yellow>full</><b> in Linker Module.</>");
+                warn!("  |_ name: {}", self.module.get_name());
             } else {
                 let prev = self.consumer.pop().unwrap();
 
@@ -311,6 +313,14 @@ impl ModuleWrapper for LinkerModuleWrapper {
                 self.producer.push(value).unwrap();
             }
         }
+    }
+
+    fn get_name(&self) -> String {
+        self.module.get_name().clone()
+    }
+
+    fn get_producer(&self) -> &ModuleProducer {
+        &self.producer
     }
 }
 
@@ -347,8 +357,8 @@ impl GeneratorModuleWrapper {
 impl ModuleWrapper for GeneratorModuleWrapper {
     fn gen_sample(&mut self, time: f32) {
         if self.producer.is_full() {
-            error!("<b>Buffer <red>full</><b> in Generator Module.</>");
-            error!("  |_ name: {}", self.module.get_name());
+            warn!("<b>Buffer <yellow>full</><b> in Generator Module.</>");
+            warn!("  |_ name: {}", self.module.get_name());
         } else {
             let aux_values = pop_auxiliaries(
                 &mut self.aux_inputs,
@@ -359,6 +369,14 @@ impl ModuleWrapper for GeneratorModuleWrapper {
 
             self.producer.push(value).unwrap();
         }
+    }
+
+    fn get_name(&self) -> String {
+        self.module.get_name().clone()
+    }
+
+    fn get_producer(&self) -> &ModuleProducer {
+        &self.producer
     }
 }
 
@@ -696,30 +714,6 @@ impl AuxInputBuilder {
 pub enum AuxDataHolder {
     Batch(Vec<f32>),
     RealTime(ModuleConsumer),
-}
-
-impl AuxDataHolder {
-    pub fn is_batch(&self) -> bool {
-        matches!(*self, Self::Batch(_))
-    }
-
-    pub fn is_real_time(&self) -> bool {
-        matches!(*self, Self::RealTime(_))
-    }
-
-    pub fn get_buffer(&self) -> Option<&Vec<f32>> {
-        match self {
-            Self::Batch(buffer) => Some(buffer),
-            _ => None,
-        }
-    }
-
-    pub fn get_consumer(&self) -> Option<&ModuleConsumer> {
-        match self {
-            Self::RealTime(consumer) => Some(&consumer),
-            _ => None,
-        }
-    }
 }
 
 /// A structure with some bundled methods to easily manage time synchronization.
