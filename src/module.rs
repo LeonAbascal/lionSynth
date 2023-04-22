@@ -716,6 +716,32 @@ pub enum AuxDataHolder {
     RealTime(ModuleConsumer),
 }
 
+impl AuxDataHolder {
+    pub fn is_batch(&self) -> bool {
+        matches!(*self, Self::Batch(_))
+    }
+
+    pub fn is_real_time(&self) -> bool {
+        matches!(*self, Self::RealTime(_))
+    }
+
+    #[cfg(test)]
+    pub fn get_buffer(&self) -> Option<&Vec<f32>> {
+        match self {
+            Self::Batch(buffer) => Some(buffer),
+            _ => None,
+        }
+    }
+
+    #[cfg(test)]
+    pub fn get_consumer(&self) -> Option<&ModuleConsumer> {
+        match self {
+            Self::RealTime(consumer) => Some(&consumer),
+            _ => None,
+        }
+    }
+}
+
 /// A structure with some bundled methods to easily manage time synchronization.
 pub struct Clock {
     tick: f32,
