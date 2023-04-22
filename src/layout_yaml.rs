@@ -11,7 +11,6 @@ use cpal::{Device, FromSample, Sample, SampleFormat, SampleRate, StreamConfig};
 use ringbuf::HeapRb;
 use simplelog::{error, info, warn};
 use std::collections::{HashMap, LinkedList};
-use std::sync::Mutex;
 use std::thread::sleep;
 use std::time::Duration;
 use std::{fs, thread};
@@ -264,20 +263,18 @@ pub fn play_from_yaml(file: &str, signal_duration: u64) -> Result<(), anyhow::Er
 
     let mut coordinator = CoordinatorEntity::new(SAMPLE_RATE, wrapper_chain);
 
-    let mut coord_wrapper = Mutex::new(coordinator);
-
-    let handle_a = thread::spawn(|| {
-        let mut coordinator = coord_wrapper.lock().unwrap();
-        coordinator.tick();
-    });
-
-    let handle_b = thread::spawn(|| {
-        let mut coordinator = coord_wrapper.lock().unwrap();
-        coordinator.tick();
-    });
-
-    handle_a.join().unwrap();
-    handle_b.join().unwrap();
+    // let handle_a = thread::spawn(|| {
+    //     let mut coordinator = coord_wrapper.lock().unwrap();
+    //     coordinator.tick();
+    // });
+    //
+    // let handle_b = thread::spawn(|| {
+    //     let mut coordinator = coord_wrapper.lock().unwrap();
+    //     coordinator.tick();
+    // });
+    //
+    // handle_a.join().unwrap();
+    // handle_b.join().unwrap();
 
     /*for i in 0..5 {
         coordinator.tick();
@@ -307,11 +304,7 @@ pub fn play_from_yaml(file: &str, signal_duration: u64) -> Result<(), anyhow::Er
     let config: StreamConfig = supported_config.into();
     let channels = config.channels as usize;
 
-    let mut next_value = move || {
-        // coordinator.tick();
-        // info!("Clock: {}", coordinator.clock.get_value());
-        cpal_consumer.pop().unwrap_or(0.0)
-    }; // Unwrap or silence
+    let mut next_value = move || cpal_consumer.pop().unwrap_or(0.0); // Unwrap or silence
 
     let err_fn = |err| eprintln!("an error occurred on stream: {}", err);
 
@@ -377,10 +370,13 @@ pub fn play_from_yaml(file: &str, signal_duration: u64) -> Result<(), anyhow::Er
     // be understood as modules where more than one module meet.
 }
 
+/// This function fills the data in batches. Is called by the cpal when it considers timely.
 fn write_data_yaml<T>(output: &mut [T], channels: usize, next_sample: &mut dyn FnMut() -> f32)
 where
     T: Sample + FromSample<f32>,
 {
+    info!("Called");
+    let mut count = 0;
     for frame in output.chunks_mut(channels) {
         // coordinator.tick(); // Makes the chain generate their own sample
 
@@ -388,7 +384,9 @@ where
         for sample in frame.iter_mut() {
             *sample = value;
         }
+        count += 1;
     }
+    info!("Frame count: {}", count);
 }
 
 // An optimization with threads would not be possible as a recursive function does not
@@ -466,8 +464,11 @@ fn build_wrapper_chain(
         let (prod, mut cons) = rb.split();
         let wrapper = LinkerModuleWrapper::new(current_module.module, cons, producer, aux_list);
 
-        wrapper_chain.push_front(Box::new(wrapper));
+        // To ensure that the sample of the previous module is generated first
+        // We fist add the AUXILIARY
         build_wrapper_chain(module_chain, next_id.unwrap(), wrapper_chain, prod);
+        // and then the current module
+        wrapper_chain.push_front(Box::new(wrapper));
     } else {
         // GENERATOR MODULE - BASE CASE
         let wrapper = GeneratorModuleWrapper::new(current_module.module, producer, aux_list);
