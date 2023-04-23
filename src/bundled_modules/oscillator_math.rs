@@ -1,5 +1,13 @@
 use std::f32::consts::PI;
 
+pub enum WaveShapes {
+    Saw,
+    Square,
+    Pulse(f32),
+    Sine,
+    Triangle,
+}
+
 pub trait OscillatorMath {
     fn sqr(&self) -> Self;
     fn tri(&self) -> Self;

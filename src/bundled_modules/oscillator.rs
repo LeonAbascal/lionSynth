@@ -1,6 +1,8 @@
-use crate::module::{Module, Parameter, ParameterBuilder};
+use crate::module::{AuxiliaryInput, Module, Parameter, ParameterBuilder};
 use crate::SAMPLE_RATE;
 use std::f32::consts::PI;
+use std::fmt;
+use std::fmt::{write, Formatter};
 
 /// The oscillator is the genesis of the chain. It does generate a raw signal
 /// following certain properties defined by its attributes.
@@ -8,18 +10,22 @@ use std::f32::consts::PI;
 /// # Usage
 /// To generate a **new oscillator**, use the [OscillatorBuilder] instead.
 ///
-/// To **change the behaviour** of an instance, use the functions named after the parameters
-/// (right below).
+/// To **change the behaviour** of an instance, use the functions named after the parameters.
+/// * [set_amplitude](fn@Oscillator::set_amplitude)
+/// * [set_frequency](fn@Oscillator::set_frequency)
+/// * [set_phase](fn@Oscillator::set_phase)
 ///
 /// # Parameters
 /// The following parameters are available for modifying to the user:
 /// * **Amplitude (A)**: translates to volume (gain). Ranges from 0 to 1. Taking it further will
-/// cause the output to clip.  
+/// cause the output to clip.
 /// * **Frequency (f)**: translates to tone (musical note). Ranges all through the human audible
 /// range; from 10 Hz to 22kHz.
 /// * **Phase (φ)**: sets the initial position of the wave and, thus, a delay for the rest of
 /// values over time. Represented in radians, it ranges from 0 to 2π. If the value was
 /// set to π, the wave would start from the middle and offset every value after.
+///
+/// For more detailed information on default values check [OscillatorBuilder].
 ///
 /// # Behaviour
 /// The generation of a signal follows a simple formula:
@@ -35,8 +41,12 @@ use std::f32::consts::PI;
 pub struct Oscillator {
     /// Amount of samples in a second
     sample_rate: f32,
-    /// Parameter list
-    parameters: Vec<Parameter>,
+    /// The maximum amplitude of the wave. Translates to volume (gain). A value greater than one will result in clipping.
+    amplitude: Parameter,
+    /// The frequency of the wave. Translates to tone.
+    frequency: Parameter,
+    ///
+    phase: Parameter,
     /// Name of the module (debugging)
     name: String,
 }
@@ -47,12 +57,16 @@ impl Module for Oscillator {
             * self.get_amplitude()
     }
 
-    fn get_parameters(&self) -> &Vec<Parameter> {
-        &self.parameters
+    fn get_parameters(&self) -> Option<Vec<&Parameter>> {
+        Some(vec![&self.amplitude, &self.frequency, &self.phase])
     }
 
-    fn get_parameters_mutable(&mut self) -> &mut Vec<Parameter> {
-        &mut self.parameters
+    fn get_parameters_mutable(&mut self) -> Option<Vec<&mut Parameter>> {
+        Some(vec![
+            &mut self.amplitude,
+            &mut self.frequency,
+            &mut self.phase,
+        ])
     }
 
     fn get_name(&self) -> String {
@@ -74,32 +88,32 @@ impl Module for Oscillator {
 impl Oscillator {
     /// Shortcut method for setting the amplitude parameter.
     pub fn set_amplitude(&mut self, amp: f32) {
-        self.get_parameter_mutable("amplitude").unwrap().set(amp);
+        self.amplitude.set(amp);
     }
 
     /// Shortcut method for setting the frequency parameter.
     pub fn set_frequency(&mut self, freq: f32) {
-        self.get_parameter_mutable("frequency").unwrap().set(freq);
+        self.frequency.set(freq);
     }
 
     /// Shortcut method for setting the phase parameter.
     pub fn set_phase(&mut self, phase: f32) {
-        self.get_parameter_mutable("phase").unwrap().set(phase);
+        self.phase.set(phase);
     }
 
     /// Shortcut method for getting the amplitude parameter.
     pub fn get_amplitude(&self) -> f32 {
-        self.get_parameter("amplitude").unwrap().get_value()
+        self.amplitude.get_value()
     }
 
     /// Shortcut method for getting the frequency parameter.
     pub fn get_frequency(&self) -> f32 {
-        self.get_parameter("frequency").unwrap().get_value()
+        self.frequency.get_value()
     }
 
     /// Shortcut method for getting the phase parameter.
     pub fn get_phase(&self) -> f32 {
-        self.get_parameter("phase").unwrap().get_value()
+        self.phase.get_value()
     }
 }
 
@@ -212,7 +226,11 @@ impl OscillatorBuilder {
     /// # Expected errors
     /// * Frequency, amplitude or phase out of range.
     pub fn build(self) -> Result<Oscillator, String> {
-        let name = format!("{} {}", self.name.unwrap_or("".to_string()), "Oscillator");
+        let name = match self.name {
+            Some(name) => format!("{} Oscillator", name),
+            None => format!("Oscillator"),
+        };
+
         let sample_rate = self.sample_rate.unwrap_or(SAMPLE_RATE as f32);
         let frequency = self.frequency.unwrap_or(440.0);
         let amplitude = self.amplitude.unwrap_or(1.0);
@@ -223,24 +241,23 @@ impl OscillatorBuilder {
         Ok(Oscillator {
             name,
             sample_rate,
-            parameters: vec![
-                ParameterBuilder::new("amplitude".to_string())
-                    .with_default(amplitude)
-                    .build()
-                    .unwrap(),
-                ParameterBuilder::new("frequency".to_string())
-                    .with_max(22000.0)
-                    .with_min(10.0)
-                    .with_step(1.0)
-                    .with_default(frequency)
-                    .build()
-                    .unwrap(),
-                ParameterBuilder::new("phase".to_string())
-                    .with_max(PI * 2.0)
-                    .with_default(phase)
-                    .build()
-                    .unwrap(),
-            ],
+            amplitude: ParameterBuilder::new("amplitude".to_string())
+                .with_default(amplitude)
+                .build()
+                .expect("Invalid amplitude value"),
+
+            frequency: ParameterBuilder::new("frequency".to_string())
+                .with_max(22000.0)
+                .with_min(10.0)
+                .with_default(frequency)
+                .build()
+                .expect("Invalid frequency value"),
+
+            phase: ParameterBuilder::new("phase".to_string())
+                .with_max(PI * 2.0)
+                .with_default(phase)
+                .build()
+                .expect("Invalid phase value"),
         })
     }
 }

@@ -7,6 +7,7 @@ use std::sync::Arc;
 pub type ModuleConsumer = Consumer<f32, Arc<SharedRb<f32, Vec<MaybeUninit<f32>>>>>;
 pub type ModuleProducer = Producer<f32, Arc<SharedRb<f32, Vec<MaybeUninit<f32>>>>>;
 
+/// Receives a list of the last values of the given auxiliaries.
 fn pop_auxiliaries(
     auxiliaries: &mut Vec<AuxiliaryInput>,
     current_values: HashMap<String, f32>,
@@ -23,8 +24,8 @@ fn pop_auxiliaries(
                 Some(value) => value,
                 None => {
                     let prev_value = *current_values.get(&tag).unwrap();
-                    // warn!("<b>Values of auxiliary list <yellow>exhausted</><b>. It is perfectly normal for the first samples of the chain.</>");
-                    // warn!("Defaulting to previous value: {}", prev_value);
+                    warn!("<b>Values of auxiliary list <yellow>exhausted</><b>. It is perfectly normal for the first samples of the chain.</>");
+                    warn!("Defaulting to previous value: {}", prev_value);
                     prev_value // Returns the previous value
                 }
             };
@@ -181,7 +182,7 @@ pub trait Module {
     /// A generated or modified sample.
     fn behaviour(&self, in_data: f32, time: f32) -> f32;
 
-    /// Adds a parameter to the list of parameters. If the tag is already in the list,
+    /*/// Adds a parameter to the list of parameters. If the tag is already in the list,
     /// the operation gets rejected.
     fn add_parameter(&mut self, in_parameter: Parameter) -> Result<(), String> {
         let parameters = self.get_parameters_mutable();
@@ -196,13 +197,14 @@ pub trait Module {
         }
 
         Ok(())
-    }
+    }*/
 
     /// Retrieves a **mutable** parameter given its tag, if exists.
     fn get_parameter_mutable(&mut self, tag: &str) -> Option<&mut Parameter> {
-        self.get_parameters_mutable()
-            .into_iter()
-            .find(|p| p.tag == tag)
+        match self.get_parameters_mutable() {
+            Some(parameters) => parameters.into_iter().find(|p| p.tag == tag),
+            None => None,
+        }
     }
 
     /// Retrieves a *non mutable* parameter given its tag, if exists. There is a mutable
@@ -223,24 +225,38 @@ pub trait Module {
     /// let current_value = module.get_name_of_param();
     /// ```
     fn get_parameter(&self, tag: &str) -> Option<&Parameter> {
-        self.get_parameters().into_iter().find(|p| p.tag == tag)
+        match self.get_parameters() {
+            Some(parameters) => parameters.into_iter().find(|p| p.tag == tag),
+            None => None,
+        }
     }
 
     /// Gets all parameters in the list. Used to enforce the presence of a parameter
     /// list in every module struct.
-    fn get_parameters(&self) -> &Vec<Parameter>;
+    fn get_parameters(&self) -> Option<Vec<&Parameter>>;
+
     /// Gets all mutable parameters in the list.
-    fn get_parameters_mutable(&mut self) -> &mut Vec<Parameter>;
+    fn get_parameters_mutable(&mut self) -> Option<Vec<&mut Parameter>>;
 
     fn get_parameter_count(&self) -> usize {
-        self.get_parameters().len()
+        match self.get_parameters() {
+            Some(parameters) => parameters.len(),
+            None => 0,
+        }
     }
 
     fn get_current_parameter_values(&self) -> HashMap<String, f32> {
-        self.get_parameters()
-            .iter()
-            .map(|p| (p.get_tag().clone(), p.get_value()))
-            .collect()
+        match self.get_parameters() {
+            Some(parameters) => parameters
+                .into_iter()
+                .map(|p| {
+                    let tag = p.get_tag().clone();
+                    let value = p.get_value();
+                    (tag, value)
+                })
+                .collect(),
+            None => HashMap::new(),
+        }
     }
 
     // USEFUL FOR DEBUGGING
@@ -326,7 +342,7 @@ impl ModuleWrapper for LinkerModuleWrapper {
 
 /// A **generator module** is a module able to generate and deliver data to another module.
 /// It should always be the first element of the chain. An example of generator module would be an
-/// [Oscillator](struct@crate::Oscillator) module.
+/// [Oscillator](struct@crate::bundled_modules::Oscillator) module.
 ///
 /// The [`GeneratorModuleWrapper`](struct@GeneratorModuleWrapper) does wrap a [Module] including
 /// a [Producer](https://docs.rs/ringbuf/latest/ringbuf/producer/struct.Producer.html) of a
