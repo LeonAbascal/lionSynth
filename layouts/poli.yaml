@@ -1,0 +1,28 @@
+---
+version: 0.4
+
+layout:
+  - module:
+      id: 0
+      type: sum
+      os-out: true
+      input-from: 1
+      config:
+        name: master
+        input_amount: 2
+      auxiliaries:
+        - aux:
+            from-id: 2
+            linked-with: in1
+  - module:
+      id: 1
+      type: oscillator
+      config:
+        name: "A4"
+        frequency: 440
+  - module:
+      id: 2
+      type: oscillator
+      config:
+        name: "D5"
+        frequency: 587.33
