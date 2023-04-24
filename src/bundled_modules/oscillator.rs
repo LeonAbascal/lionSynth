@@ -10,18 +10,22 @@ use std::fmt::{write, Formatter};
 /// # Usage
 /// To generate a **new oscillator**, use the [OscillatorBuilder] instead.
 ///
-/// To **change the behaviour** of an instance, use the functions named after the parameters
-/// (right below).
+/// To **change the behaviour** of an instance, use the functions named after the parameters.
+/// * [set_amplitude](fn@Oscillator::set_amplitude)
+/// * [set_frequency](fn@Oscillator::set_frequency)
+/// * [set_phase](fn@Oscillator::set_phase)
 ///
 /// # Parameters
 /// The following parameters are available for modifying to the user:
 /// * **Amplitude (A)**: translates to volume (gain). Ranges from 0 to 1. Taking it further will
-/// cause the output to clip.  
+/// cause the output to clip.
 /// * **Frequency (f)**: translates to tone (musical note). Ranges all through the human audible
 /// range; from 10 Hz to 22kHz.
 /// * **Phase (φ)**: sets the initial position of the wave and, thus, a delay for the rest of
 /// values over time. Represented in radians, it ranges from 0 to 2π. If the value was
 /// set to π, the wave would start from the middle and offset every value after.
+///
+/// For more detailed information on default values check [OscillatorBuilder].
 ///
 /// # Behaviour
 /// The generation of a signal follows a simple formula:
@@ -33,38 +37,36 @@ use std::fmt::{write, Formatter};
 /// `φ` the phase and
 /// `f` the frequency.
 ///
-/// `t` gets calculated with the clock of the oscillator and the sample rate.
+/// `t` the time given by a coordinator entity.
 pub struct Oscillator {
-    /// Inner workings for time tracing
-    clock: f32,
     /// Amount of samples in a second
     sample_rate: f32,
-    /// Parameter list
-    parameters: Vec<Parameter>,
+    /// The maximum amplitude of the wave. Translates to volume (gain). A value greater than one will result in clipping.
+    amplitude: Parameter,
+    /// The frequency of the wave. Translates to tone.
+    frequency: Parameter,
+    ///
+    phase: Parameter,
     /// Name of the module (debugging)
     name: String,
 }
 
 impl Module for Oscillator {
-    fn behaviour(&self, _in_data: f32) -> f32 {
-        ((self.clock * self.get_frequency() * 2.0 * PI / self.sample_rate) + self.get_phase()).sin()
+    fn behaviour(&self, _in_data: f32, time: f32) -> f32 {
+        ((time * self.get_frequency() * 2.0 * PI / self.sample_rate) + self.get_phase()).sin()
             * self.get_amplitude()
     }
 
-    fn get_parameters(&self) -> &Vec<Parameter> {
-        &self.parameters
+    fn get_parameters(&self) -> Option<Vec<&Parameter>> {
+        Some(vec![&self.amplitude, &self.frequency, &self.phase])
     }
 
-    fn get_parameters_mutable(&mut self) -> &mut Vec<Parameter> {
-        &mut self.parameters
-    }
-
-    fn inc_clock(&mut self) {
-        self.clock = (self.clock + 1.0) % self.sample_rate;
-    }
-
-    fn get_clock(&self) -> f32 {
-        self.clock
+    fn get_parameters_mutable(&mut self) -> Option<Vec<&mut Parameter>> {
+        Some(vec![
+            &mut self.amplitude,
+            &mut self.frequency,
+            &mut self.phase,
+        ])
     }
 
     fn get_name(&self) -> String {
@@ -86,32 +88,32 @@ impl Module for Oscillator {
 impl Oscillator {
     /// Shortcut method for setting the amplitude parameter.
     pub fn set_amplitude(&mut self, amp: f32) {
-        self.get_parameter_mutable("amplitude").unwrap().set(amp);
+        self.amplitude.set(amp);
     }
 
     /// Shortcut method for setting the frequency parameter.
     pub fn set_frequency(&mut self, freq: f32) {
-        self.get_parameter_mutable("frequency").unwrap().set(freq);
+        self.frequency.set(freq);
     }
 
     /// Shortcut method for setting the phase parameter.
     pub fn set_phase(&mut self, phase: f32) {
-        self.get_parameter_mutable("phase").unwrap().set(phase);
+        self.phase.set(phase);
     }
 
     /// Shortcut method for getting the amplitude parameter.
     pub fn get_amplitude(&self) -> f32 {
-        self.get_parameter("amplitude").unwrap().get_value()
+        self.amplitude.get_value()
     }
 
     /// Shortcut method for getting the frequency parameter.
     pub fn get_frequency(&self) -> f32 {
-        self.get_parameter("frequency").unwrap().get_value()
+        self.frequency.get_value()
     }
 
     /// Shortcut method for getting the phase parameter.
     pub fn get_phase(&self) -> f32 {
-        self.get_parameter("phase").unwrap().get_value()
+        self.phase.get_value()
     }
 }
 
@@ -132,7 +134,6 @@ pub struct OscillatorBuilder {
     frequency: Option<f32>,
     amplitude: Option<f32>,
     phase: Option<f32>,
-    parameters: Option<Vec<Parameter>>,
     name: Option<String>,
 }
 
@@ -145,7 +146,6 @@ impl OscillatorBuilder {
             frequency: None,
             amplitude: None,
             phase: None,
-            parameters: None,
         }
     }
 
@@ -226,7 +226,11 @@ impl OscillatorBuilder {
     /// # Expected errors
     /// * Frequency, amplitude or phase out of range.
     pub fn build(self) -> Result<Oscillator, String> {
-        let name = format!("{} {}", self.name.unwrap_or("".to_string()), "Oscillator");
+        let name = match self.name {
+            Some(name) => format!("{} Oscillator", name),
+            None => format!("Oscillator"),
+        };
+
         let sample_rate = self.sample_rate.unwrap_or(SAMPLE_RATE as f32);
         let frequency = self.frequency.unwrap_or(440.0);
         let amplitude = self.amplitude.unwrap_or(1.0);
@@ -236,26 +240,24 @@ impl OscillatorBuilder {
 
         Ok(Oscillator {
             name,
-            clock: 0.0,
             sample_rate,
-            parameters: vec![
-                ParameterBuilder::new("amplitude".to_string())
-                    .with_default(amplitude)
-                    .build()
-                    .unwrap(),
-                ParameterBuilder::new("frequency".to_string())
-                    .with_max(22000.0)
-                    .with_min(10.0)
-                    .with_step(1.0)
-                    .with_default(frequency)
-                    .build()
-                    .unwrap(),
-                ParameterBuilder::new("phase".to_string())
-                    .with_max(PI * 2.0)
-                    .with_default(phase)
-                    .build()
-                    .unwrap(),
-            ],
+            amplitude: ParameterBuilder::new("amplitude".to_string())
+                .with_default(amplitude)
+                .build()
+                .expect("Invalid amplitude value"),
+
+            frequency: ParameterBuilder::new("frequency".to_string())
+                .with_max(22000.0)
+                .with_min(10.0)
+                .with_default(frequency)
+                .build()
+                .expect("Invalid frequency value"),
+
+            phase: ParameterBuilder::new("phase".to_string())
+                .with_max(PI * 2.0)
+                .with_default(phase)
+                .build()
+                .expect("Invalid phase value"),
         })
     }
 }
@@ -264,6 +266,9 @@ impl OscillatorBuilder {
 mod oscillator_builder_tests {
     use super::Module;
     use super::OscillatorBuilder;
+    use crate::bundled_modules::Oscillator;
+    use crate::module::Clock;
+    use crate::SAMPLE_RATE;
     use simplelog::__private::paris::Logger;
     use std::f32::consts::PI;
 
@@ -274,12 +279,14 @@ mod oscillator_builder_tests {
     #[test]
     fn test_default() {
         let mut logger = get_logger();
+        let mut clock = Clock::new(SAMPLE_RATE);
+
         logger.info("<b>Running test for oscillator builder with no arguments</>");
 
         let osc = OscillatorBuilder::new().build().unwrap();
 
         assert_eq!(osc.sample_rate, 44100.0, "Default sample mismatch");
-        assert_eq!(osc.clock, 0.0, "Clock mismatch");
+        assert_eq!(clock.get_value(), 0.0, "Clock mismatch");
 
         let amp = (&osc).get_parameter("amplitude");
         let phase = (&osc).get_parameter("phase");
@@ -299,6 +306,7 @@ mod oscillator_builder_tests {
 
     #[test]
     fn test_all_fields() {
+        let mut clock = Clock::new(SAMPLE_RATE);
         let osc = OscillatorBuilder::new()
             .with_amplitude(0.5)
             .with_frequency(220.0)
@@ -308,7 +316,7 @@ mod oscillator_builder_tests {
             .unwrap();
 
         assert_eq!(osc.sample_rate, 22000.0, "Sample mismatch");
-        assert_eq!(osc.clock, 0.0, "Clock mismatch");
+        assert_eq!(clock.get_value(), 0.0, "Clock mismatch");
 
         let amp = (&osc).get_parameter("amplitude");
         let phase = (&osc).get_parameter("phase");
@@ -326,7 +334,56 @@ mod oscillator_builder_tests {
         assert_eq!(phase.unwrap().get_value(), 1.0, "Phase parameter differs");
     }
 
-    // TODO: should panic tests?
+    #[test]
+    #[should_panic]
+    fn test_invalid_amplitude_max() {
+        OscillatorBuilder::new()
+            .with_amplitude(1.1)
+            .build()
+            .unwrap();
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_invalid_amplitude_min() {
+        OscillatorBuilder::new()
+            .with_amplitude(-0.1)
+            .build()
+            .unwrap();
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_invalid_frequency_min() {
+        OscillatorBuilder::new()
+            .with_frequency(-1.0)
+            .build()
+            .unwrap();
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_invalid_frequency_max() {
+        OscillatorBuilder::new()
+            .with_frequency(22000.1)
+            .build()
+            .unwrap();
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_invalid_phase_min() {
+        OscillatorBuilder::new().with_phase(-1.0).build().unwrap();
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_invalid_phase_max() {
+        OscillatorBuilder::new()
+            .with_phase(PI * 3.0)
+            .build()
+            .unwrap();
+    }
 }
 
 #[cfg(test)]
@@ -334,7 +391,50 @@ mod oscillator_tests {
     use super::OscillatorBuilder;
     use std::f32::consts::PI;
 
-    // TODO: test wrong sets
+    #[test]
+    fn test_set_amplitude() {
+        let mut osc = OscillatorBuilder::new().build().unwrap();
+
+        osc.set_amplitude(0.5);
+        let prev = osc.get_amplitude();
+        osc.set_amplitude(1.1);
+        let mut post = osc.get_amplitude();
+        assert_eq!(prev, post, "Amplitude should not surpass the maximum.");
+
+        osc.set_amplitude(-1.0);
+        post = osc.get_amplitude();
+        assert_eq!(prev, post, "Amplitude should not surpass the minimum.");
+    }
+
+    #[test]
+    fn test_set_frequency() {
+        let mut osc = OscillatorBuilder::new().build().unwrap();
+
+        osc.set_frequency(440.0);
+        let prev = osc.get_frequency();
+        osc.set_frequency(22100.0);
+        let mut post = osc.get_frequency();
+        assert_eq!(prev, post, "Frequency should not surpass the maximum.");
+
+        osc.set_frequency(-1.0);
+        post = osc.get_frequency();
+        assert_eq!(prev, post, "Frequency should not surpass the minimum.");
+    }
+
+    #[test]
+    fn test_set_phase() {
+        let mut osc = OscillatorBuilder::new().build().unwrap();
+
+        osc.set_phase(0.0);
+        let prev = osc.get_phase();
+        osc.set_phase(PI * 3.0);
+        let mut post = osc.get_phase();
+        assert_eq!(prev, post, "Phase should not surpass the maximum.");
+
+        osc.set_phase(-1.0);
+        post = osc.get_phase();
+        assert_eq!(prev, post, "Phase should not surpass the minimum.");
+    }
 
     #[test]
     fn test_get_amplitude() {

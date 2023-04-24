@@ -1,34 +1,25 @@
-use crate::module::{AuxiliaryInput, Module, Parameter};
+use crate::module::{Module, Parameter};
 use std::f32::consts::PI;
 
 // MODULES
-pub struct PassTrough {
-    parameters: Vec<Parameter>,
-}
+pub struct PassTrough {}
 
 pub struct OscDebug {
-    clock: f32,
     sample_rate: f32,
-    parameters: Vec<Parameter>,
 }
 
 // IMPLEMENTATIONS
 impl Module for PassTrough {
-    fn behaviour(&self, in_sample: f32) -> f32 {
+    fn behaviour(&self, in_sample: f32, _time: f32) -> f32 {
         in_sample // clean data
     }
 
-    fn get_parameters(&self) -> &Vec<Parameter> {
-        &self.parameters
+    fn get_parameters(&self) -> Option<Vec<&Parameter>> {
+        None
     }
 
-    fn get_parameters_mutable(&mut self) -> &mut Vec<Parameter> {
-        &mut self.parameters
-    }
-
-    fn inc_clock(&mut self) {}
-    fn get_clock(&self) -> f32 {
-        0.0
+    fn get_parameters_mutable(&mut self) -> Option<Vec<&mut Parameter>> {
+        None
     }
 
     fn get_name(&self) -> String {
@@ -37,24 +28,17 @@ impl Module for PassTrough {
 }
 
 impl Module for OscDebug {
-    fn behaviour(&self, _: f32) -> f32 {
+    fn behaviour(&self, _: f32, time: f32) -> f32 {
         let freq: f32 = 440.0;
-        (self.clock * freq * 2.0 * PI / self.sample_rate).sin()
+        (time * freq * 2.0 * PI / self.sample_rate).sin()
     }
 
-    fn get_parameters(&self) -> &Vec<Parameter> {
-        &self.parameters
+    fn get_parameters(&self) -> Option<Vec<&Parameter>> {
+        None
     }
 
-    fn get_parameters_mutable(&mut self) -> &mut Vec<Parameter> {
-        &mut self.parameters
-    }
-
-    fn inc_clock(&mut self) {
-        self.clock = (self.clock + 1.0) % self.sample_rate;
-    }
-    fn get_clock(&self) -> f32 {
-        self.clock
+    fn get_parameters_mutable(&mut self) -> Option<Vec<&mut Parameter>> {
+        None
     }
 
     fn get_name(&self) -> String {
@@ -65,16 +49,14 @@ impl Module for OscDebug {
 // CONSTRUCTORS
 impl PassTrough {
     pub fn new() -> Self {
-        Self { parameters: vec![] }
+        Self {}
     }
 }
 
 impl OscDebug {
     pub fn new(sample_rate: i32) -> Self {
         Self {
-            clock: 0.0,
             sample_rate: sample_rate as f32,
-            parameters: vec![],
         }
     }
 }
@@ -90,7 +72,7 @@ mod test {
         let mut tested_module = OscDebug::new(SAMPLE_RATE);
         let mut buffer: Vec<f32> = vec![0.0; 10];
 
-        tested_module.fill_buffer(&mut buffer);
+        tested_module.fill_buffer(&mut buffer, vec![]);
 
         let deterministic_buffer: Vec<f32> = vec![
             0.0,
@@ -115,10 +97,10 @@ mod test {
         let mut original_buffer: Vec<f32> = vec![0.0; 20];
 
         // MODIFY THE BUFFER
-        osc.fill_buffer(&mut original_buffer);
+        osc.fill_buffer(&mut original_buffer, vec![]);
         let mut modified_buffer = original_buffer.clone();
 
-        tested_module.fill_buffer(&mut modified_buffer);
+        tested_module.fill_buffer(&mut modified_buffer, vec![]);
         assert_eq!(original_buffer, modified_buffer);
     }
 }
