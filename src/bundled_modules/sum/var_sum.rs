@@ -31,7 +31,7 @@ impl Module for VarSum {
             result += in_value.get_value();
         }
 
-        result * out_gain
+        result * self.out_gain.get_value()
     }
 
     fn get_parameters(&self) -> Option<Vec<&Parameter>> {
@@ -62,7 +62,7 @@ pub struct VarSumBuilder {
 }
 
 impl VarSumBuilder {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             name: None,
             in_count: None,
@@ -70,22 +70,22 @@ impl VarSumBuilder {
         }
     }
 
-    fn with_name(mut self, name: String) -> Self {
+    pub fn with_name(mut self, name: String) -> Self {
         self.name = Some(name);
         self
     }
 
-    fn with_output_gain(mut self, out_gain: f32) -> Self {
+    pub fn with_output_gain(mut self, out_gain: f32) -> Self {
         self.out_gain = Some(out_gain);
         self
     }
 
-    fn input_amt(mut self, in_count: u32) -> Self {
+    pub fn input_amt(mut self, in_count: u32) -> Self {
         self.in_count = Some(in_count);
         self
     }
 
-    fn build(mut self) -> VarSum {
+    pub fn build(mut self) -> VarSum {
         let in_count = self.in_count.unwrap_or(2);
         let out_gain = self.out_gain.unwrap_or(1.0);
 

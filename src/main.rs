@@ -30,6 +30,8 @@ fn main() -> Result<(), anyhow::Error> {
     .expect("Failed to start simplelog");
     // let logger = Logger::new();
 
+    test();
+    std::process::exit(0);
     // FILL BUFFER
     info!("<b>Running <blue>demo program</>");
     show_features_info();
@@ -52,4 +54,31 @@ fn show_features_info() {
         info!("<b>This will output more information about the <blue>inner process</> <b>of the modules.</>");
         println!();
     }
+}
+
+fn test() {
+    use crate::bundled_modules::{Sum2In, Sum2InBuilder};
+    use crate::module::*;
+    use bundled_modules::debug::*;
+
+    const BUFFER_SIZE: usize = 10;
+
+    let mut in1_osc = OscDebug::new(SAMPLE_RATE);
+    let mut in2_osc = OscDebug::new(SAMPLE_RATE);
+    let mut sum = Sum2InBuilder::new().build().unwrap();
+
+    let mut buffer1 = vec![0.0f32; BUFFER_SIZE];
+    let mut buffer2 = vec![0.0f32; BUFFER_SIZE];
+
+    in1_osc.fill_buffer(&mut buffer1, vec![]);
+    in2_osc.fill_buffer(&mut buffer2, vec![]);
+
+    assert_eq!(buffer1, buffer2);
+
+    sum.fill_buffer(
+        &mut buffer1,
+        vec![AuxInputBuilder::new("in2", AuxDataHolder::Batch(buffer2))
+            .build()
+            .unwrap()],
+    );
 }

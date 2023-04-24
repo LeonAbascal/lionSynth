@@ -13,6 +13,7 @@ layout:
       config:
         name: Carrier
         frequency: 440.0
+        amplitude: 0.1
       auxiliaries:
         - aux:
             from-id: 2

@@ -14,11 +14,11 @@ fn pop_auxiliaries(
 ) -> HashMap<String, f32> {
     let result: HashMap<String, f32>;
 
-    // TODO use current values
     result = auxiliaries
         .iter_mut()
         .map(|aux| {
             let tag = aux.tag.clone(); // Gets the parameter tag is associated with
+
             let value = match aux.pop() {
                 // Gets the next sample in the vector
                 Some(value) => value,
@@ -159,7 +159,18 @@ pub trait Module {
         // popping is faster than removing from the beginning.
         // As we don't need to access both ends of the vector, it is
         // easier just to reverse it.
-        auxiliaries.reverse();
+        auxiliaries
+            .iter_mut()
+            .for_each(|aux| aux.data.reverse_buffer().unwrap());
+
+        for item in auxiliaries.iter() {
+            info!("{}", item.tag);
+            item.data
+                .get_buffer()
+                .unwrap()
+                .iter()
+                .for_each(|a| info!("{}", a));
+        }
 
         // FILLING THE BUFFER IS THIS EASY
         buffer.iter_mut().for_each(|sample| {
@@ -741,7 +752,6 @@ impl AuxDataHolder {
         matches!(*self, Self::RealTime(_))
     }
 
-    #[cfg(test)]
     pub fn get_buffer(&self) -> Option<&Vec<f32>> {
         match self {
             Self::Batch(buffer) => Some(buffer),
@@ -749,7 +759,18 @@ impl AuxDataHolder {
         }
     }
 
-    #[cfg(test)]
+    pub fn reverse_buffer(&mut self) -> Result<(), String> {
+        match self {
+            Self::Batch(buffer) => {
+                buffer.reverse();
+                Ok(())
+            }
+            _ => Err(String::from(
+                "Buffer cannot be reversed in real time processing",
+            )),
+        }
+    }
+
     pub fn get_consumer(&self) -> Option<&ModuleConsumer> {
         match self {
             Self::RealTime(consumer) => Some(&consumer),
