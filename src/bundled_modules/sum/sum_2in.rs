@@ -45,15 +45,6 @@ impl Module for Sum2In {
         let in_1 = in_data * self.in1_gain.get_value();
         let in_2 = self.get_in2() * self.in2_gain.get_value();
 
-        println!("VALUE:");
-        println!("  |_ IN1: {}", in_data);
-        println!("    |_ gain: {}", self.in1_gain.get_value());
-        println!("    |_ value: {}", in_1);
-        println!("  |_ IN2: {}", self.get_in2());
-        println!("    |_ gain: {}", self.in2_gain.get_value());
-        println!("    |_ value: {}", in_2);
-        println!("  |_ OUT: {}", self.out_gain.get_value());
-
         (in_1 + in_2) * self.out_gain.get_value()
     }
 
@@ -195,9 +186,18 @@ mod test {
             sum.fill_buffer(
                 &mut buffer1,
                 vec![AuxInputBuilder::new("in2", AuxDataHolder::Batch(buffer2))
+                    .with_min(-1.0)
+                    .with_max(1.0)
                     .build()
                     .unwrap()],
             );
+
+            let deterministic_buffer = vec![
+                0.0, 0.12529662, 0.2501011, 0.37392285, 0.4962757, 0.6166787, 0.7346592, 0.8497534,
+                0.96150917, 1.0694873,
+            ];
+
+            assert_eq!(deterministic_buffer, buffer1);
         }
     }
 }

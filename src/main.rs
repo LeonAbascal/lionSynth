@@ -78,7 +78,13 @@ fn test() {
     sum.fill_buffer(
         &mut buffer1,
         vec![AuxInputBuilder::new("in2", AuxDataHolder::Batch(buffer2))
+            .with_min(-1.0)
+            .with_max(1.0)
             .build()
             .unwrap()],
     );
+
+    for item in buffer1 {
+        info!("{}", item);
+    }
 }

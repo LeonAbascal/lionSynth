@@ -163,15 +163,6 @@ pub trait Module {
             .iter_mut()
             .for_each(|aux| aux.data.reverse_buffer().unwrap());
 
-        for item in auxiliaries.iter() {
-            info!("{}", item.tag);
-            item.data
-                .get_buffer()
-                .unwrap()
-                .iter()
-                .for_each(|a| info!("{}", a));
-        }
-
         // FILLING THE BUFFER IS THIS EASY
         buffer.iter_mut().for_each(|sample| {
             self.update_parameters(pop_auxiliaries(
@@ -653,9 +644,10 @@ impl AuxiliaryInput {
     /// // Input:  1.0; Output: 1.0
     /// ```
     fn translate(&self, value: f32) -> f32 {
-        let size = self.max - self.min;
+        let from_range = (-1.0, 1.0);
 
-        ((size * value + size) / 2.0) + self.min
+        // ( (old_value - old_min) / (old_max - old_min) ) * (new_max - new_min) + new_min
+        ((value - from_range.0) / (from_range.1 - from_range.0)) * (self.max - self.min) + self.min
     }
 }
 
