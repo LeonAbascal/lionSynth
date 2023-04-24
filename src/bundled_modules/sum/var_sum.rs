@@ -10,6 +10,7 @@
 //! not clip in every type of module, but will surely clip once hit the output of the operating
 //! system.
 
+use super::*;
 use crate::module::{Module, Parameter, ParameterBuilder};
 
 /// The [VarSum] will let you create a sum module with any amount of modules.
@@ -85,7 +86,7 @@ impl VarSumBuilder {
         self
     }
 
-    pub fn build(mut self) -> VarSum {
+    pub fn build(mut self) -> Result<VarSum, String> {
         let in_count = self.in_count.unwrap_or(2);
         let out_gain = self.out_gain.unwrap_or(1.0);
 
@@ -97,29 +98,25 @@ impl VarSumBuilder {
         let mut inputs = vec![];
         for i in 0..in_count {
             let param = ParameterBuilder::new(format!("in{}", i))
-                .with_min(-1.0)
+                .with_min(AUDIO_RANGE_BOT)
                 .with_default(0.0)
-                .with_max(1.0)
+                .with_max(AUDIO_RANGE_TOP)
                 .build()
                 .unwrap();
             inputs.push(param);
         }
 
-        // TODO let the user define the maximums and minimums? So the user can use
-        // it for other things than sum audio (limited to 1.0 -1.0
-        // Too much complexity. That would be another module for. Complex sum?
-
-        VarSum {
+        Ok(VarSum {
             name,
             in_count,
             inputs,
             out_gain: ParameterBuilder::new("out_gain".to_string())
-                .with_max(1.0)
+                .with_max(OVER_GAIN)
                 .with_default(out_gain)
-                .with_min(0.0)
+                .with_min(MIN_GAIN)
                 .build()
                 .unwrap(),
-        }
+        })
     }
 }
 

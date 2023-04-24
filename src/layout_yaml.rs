@@ -1,5 +1,6 @@
 use crate::back_end::{get_preferred_config, write_data, Channels};
 use crate::bundled_modules::debug::*;
+use crate::bundled_modules::prelude::Sum3InBuilder;
 use crate::bundled_modules::*;
 use crate::module::{
     AuxDataHolder, AuxInputBuilder, AuxiliaryInput, Clock, GeneratorModuleWrapper,
@@ -12,12 +13,14 @@ use ringbuf::HeapRb;
 use simplelog::{error, info, warn};
 use std::collections::{HashMap, LinkedList};
 use std::fs;
+use std::iter::zip;
 use std::thread::sleep;
 use std::time::Duration;
 use yaml_rust::{Yaml, YamlLoader};
 
 // TODO test size. Different signal durations may affected playback
 const BATCH_SIZE_RT: usize = 1000;
+const YAML_VERSION: f64 = 0.5;
 
 struct ChainCell {
     from_module: Option<i64>,
@@ -68,7 +71,7 @@ fn load_yaml(file: &str, first_module_index: &mut i64) -> HashMap<i64, ChainCell
     let version = *&doc["version"].as_f64().unwrap_or(0.0);
     let layout = &doc["layout"];
 
-    if version != 0.4f64 {
+    if version != YAML_VERSION {
         error!("<b>Please use the <red>latest YAML</> <b>version.</>");
         panic!();
     } else {
@@ -128,19 +131,78 @@ fn load_yaml(file: &str, first_module_index: &mut i64) -> HashMap<i64, ChainCell
 
         let generated_module: Box<dyn Module> = match module_type {
             "oscillator" => {
-                let sample_rate = config["sample_rate"].as_i64();
-                let amp = config["amplitude"].as_f64();
-                let freq = config["frequency"].as_f64();
-                let phase = config["phase"].as_f64();
+                if !config.is_null() {
+                    let sample_rate = config["sample_rate"].as_i64();
+                    let amp = config["amplitude"].as_f64();
+                    let freq = config["frequency"].as_f64();
+                    let phase = config["phase"].as_f64();
 
-                Box::new(
-                    OscillatorBuilder::new()
-                        .with_all_yaml_fmt(name, sample_rate, amp, freq, phase)
-                        .build()
-                        .unwrap(),
-                )
+                    Box::new(
+                        OscillatorBuilder::with_all_yaml_fmt(name, sample_rate, amp, freq, phase)
+                            .build()
+                            .unwrap(),
+                    )
+                } else {
+                    info!("No configuration found for oscillator");
+                    Box::new(OscillatorBuilder::new().build().unwrap())
+                }
             }
 
+            "sum" => {
+                let input_amount = config["input-amount"].as_i64();
+
+                if input_amount.is_none() {
+                    error!(
+                        "<b>Invalid format or no <red>input amount</> <b>provided for sum module. ID: {}.</>",
+                        module_id
+                    );
+                    panic!(
+                        "No input amount specified for the sum module. ID: {}",
+                        module_id
+                    );
+                }
+
+                let input_amount = input_amount.unwrap();
+
+                let out_gain = &config["out-gain"];
+                let in_1_gain = &config["in-1"];
+                let in_2_gain = &config["in-2"];
+                let in_3_gain = &config["in-3"];
+
+                let items: Vec<Option<f64>> = [out_gain, in_1_gain, in_2_gain, in_3_gain]
+                    .into_iter()
+                    .map(|yaml| match yaml {
+                        Yaml::Real(_) => yaml.as_f64(),
+                        Yaml::Integer(_) => yaml.as_i64().map(|x| x as f64),
+                        _ => None,
+                    })
+                    .collect();
+                let (out_gain, in_1_gain, in_2_gain, in_3_gain) =
+                    (items[0], items[1], items[2], items[3]);
+
+                if input_amount <= 1 {
+                    error!("<b><redInvalid amount</> <b>of inputs declared</>");
+                    error!("  |_ id: {}", module_id);
+                    panic!("Invalid amount of inputs for module with id {}", module_id);
+                } else if input_amount == 2 {
+                    Box::new(
+                        Sum2InBuilder::with_all_yaml(name, out_gain, in_1_gain, in_2_gain)
+                            .build()
+                            .unwrap(),
+                    )
+                } else if input_amount == 3 {
+                    Box::new(
+                        Sum3InBuilder::with_all_yaml(
+                            name, out_gain, in_1_gain, in_2_gain, in_3_gain,
+                        )
+                        .build()
+                        .unwrap(),
+                    )
+                } else {
+                    // TODO multi sum
+                    Box::new(VarSumBuilder::new().build().unwrap())
+                }
+            }
             "osc_debug" => Box::new(OscDebug::new(SAMPLE_RATE)),
             "pass_through" => Box::new(PassTrough::new()),
 
@@ -156,7 +218,9 @@ fn load_yaml(file: &str, first_module_index: &mut i64) -> HashMap<i64, ChainCell
         let mut auxiliaries: Vec<AuxInfo> = Vec::new();
         info!("  |_ looking for auxiliaries");
 
+        let mut aux_count = 0;
         for aux in module["auxiliaries"].clone().into_iter() {
+            aux_count += 1;
             let aux = &aux["aux"];
 
             let from_id = &aux["from-id"];
@@ -190,6 +254,7 @@ fn load_yaml(file: &str, first_module_index: &mut i64) -> HashMap<i64, ChainCell
             let max = match &aux["max"] {
                 Yaml::Real(_) => aux["max"].as_f64().map(|x| x as f32),
                 Yaml::Integer(_) => aux["max"].as_i64().map(|x| x as f32),
+                Yaml::BadValue => None, // not found
                 _ => {
                     warn!("<b>Invalid format for <yellow>max</> <b>value.</>");
                     None
@@ -199,6 +264,7 @@ fn load_yaml(file: &str, first_module_index: &mut i64) -> HashMap<i64, ChainCell
             let min = match &aux["min"] {
                 Yaml::Real(_) => aux["min"].as_f64().map(|x| x as f32),
                 Yaml::Integer(_) => aux["min"].as_i64().map(|x| x as f32),
+                Yaml::BadValue => None, // not found
                 _ => {
                     warn!("<b>Invalid format for <yellow>min</> <b>value.</>");
                     None
@@ -219,6 +285,13 @@ fn load_yaml(file: &str, first_module_index: &mut i64) -> HashMap<i64, ChainCell
                 max,
                 min,
             });
+        }
+
+        if let Some(input_amount) = config["input-amount"].as_i64() {
+            if aux_count < input_amount {
+                warn!("<b>A {} module has been detected not to have every input routed to an <yellow>auxiliary</><b>.</>", module_type);
+                warn!("  |_ id: {}", module_id);
+            }
         }
 
         module_chain.insert(
