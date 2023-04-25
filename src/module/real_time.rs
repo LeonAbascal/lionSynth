@@ -1,6 +1,7 @@
 use crate::module::module::pop_auxiliaries;
 use crate::module::*;
 use simplelog::warn;
+use std::collections::LinkedList;
 
 pub trait ModuleWrapper {
     fn gen_sample(&mut self, time: f32);
@@ -173,5 +174,32 @@ impl Clock {
         let prev = self.tick;
         self.tick = (self.tick + 1.0) % self.sample_rate;
         prev
+    }
+}
+
+pub struct CoordinatorEntity {
+    clock: Clock,
+    wrapper_chain: LinkedList<Box<dyn ModuleWrapper>>,
+}
+
+impl CoordinatorEntity {
+    pub fn new(sample_rate: i32, chain: LinkedList<Box<dyn ModuleWrapper>>) -> Self {
+        Self {
+            clock: Clock::new(sample_rate),
+            wrapper_chain: chain,
+        }
+    }
+
+    pub fn get_mut_wrapper_chain(&mut self) -> &mut LinkedList<Box<dyn ModuleWrapper>> {
+        &mut self.wrapper_chain
+    }
+
+    pub fn tick(&mut self) {
+        self.wrapper_chain.iter_mut().for_each(|module| {
+            module.gen_sample(self.clock.get_value());
+        });
+
+        // POST OPERATIONS
+        self.clock.inc();
     }
 }

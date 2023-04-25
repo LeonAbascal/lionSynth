@@ -1,8 +1,6 @@
-use crate::module::{AuxiliaryInput, Module, Parameter, ParameterBuilder};
+use crate::module::{Module, Parameter, ParameterBuilder};
 use crate::SAMPLE_RATE;
 use std::f32::consts::PI;
-use std::fmt;
-use std::fmt::{write, Formatter};
 
 /// The oscillator is the genesis of the chain. It does generate a raw signal
 /// following certain properties defined by its attributes.

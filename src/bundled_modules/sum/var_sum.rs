@@ -86,7 +86,7 @@ impl VarSumBuilder {
         self
     }
 
-    pub fn build(mut self) -> Result<VarSum, String> {
+    pub fn build(self) -> Result<VarSum, String> {
         let in_count = self.in_count.unwrap_or(2);
         let out_gain = self.out_gain.unwrap_or(1.0);
 

@@ -1,12 +1,14 @@
 mod aux_input;
 mod module;
 mod parameter;
-mod real_time_wrappers;
+mod real_time;
 
 pub use aux_input::{AuxDataHolder, AuxInputBuilder, AuxiliaryInput};
 pub use module::Module;
 pub use parameter::{Parameter, ParameterBuilder};
-pub use real_time_wrappers::{Clock, GeneratorModuleWrapper, LinkerModuleWrapper, ModuleWrapper};
+pub use real_time::{
+    Clock, CoordinatorEntity, GeneratorModuleWrapper, LinkerModuleWrapper, ModuleWrapper,
+};
 
 // TYPES
 use ringbuf::{Consumer, Producer, SharedRb};

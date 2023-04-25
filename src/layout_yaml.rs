@@ -3,7 +3,7 @@ use crate::bundled_modules::debug::*;
 use crate::bundled_modules::prelude::Sum3InBuilder;
 use crate::bundled_modules::*;
 use crate::module::{
-    AuxDataHolder, AuxInputBuilder, AuxiliaryInput, Clock, GeneratorModuleWrapper,
+    AuxDataHolder, AuxInputBuilder, AuxiliaryInput, CoordinatorEntity, GeneratorModuleWrapper,
     LinkerModuleWrapper, Module, ModuleProducer, ModuleWrapper,
 };
 use crate::SAMPLE_RATE;
@@ -13,7 +13,6 @@ use ringbuf::HeapRb;
 use simplelog::{error, info, warn};
 use std::collections::{HashMap, LinkedList};
 use std::fs;
-use std::iter::zip;
 use std::thread::sleep;
 use std::time::Duration;
 use yaml_rust::{Yaml, YamlLoader};
@@ -33,30 +32,6 @@ struct AuxInfo {
     linked_with: String,
     max: Option<f32>,
     min: Option<f32>,
-}
-
-// TODO move to back_end.rs?
-struct CoordinatorEntity {
-    clock: Clock,
-    wrapper_chain: LinkedList<Box<dyn ModuleWrapper>>,
-}
-
-impl CoordinatorEntity {
-    pub fn new(sample_rate: i32, chain: LinkedList<Box<dyn ModuleWrapper>>) -> Self {
-        Self {
-            clock: Clock::new(sample_rate),
-            wrapper_chain: chain,
-        }
-    }
-
-    pub fn tick(&mut self) {
-        self.wrapper_chain.iter_mut().for_each(|module| {
-            module.gen_sample(self.clock.get_value());
-        });
-
-        // POST OPERATIONS
-        self.clock.inc();
-    }
 }
 
 fn load_yaml(file: &str, first_module_index: &mut i64) -> HashMap<i64, ChainCell> {
@@ -383,7 +358,7 @@ pub fn play_from_yaml(
     let mut count = 0;
     while count < (signal_duration as f32 * sample_rate as f32 / 1000.0) as i32 {
         if !coordinator
-            .wrapper_chain
+            .get_mut_wrapper_chain()
             .front()
             .unwrap()
             .get_producer()
