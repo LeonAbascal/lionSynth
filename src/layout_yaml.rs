@@ -199,7 +199,7 @@ fn load_yaml(file: &str, first_module_index: &mut i64) -> HashMap<i64, ChainCell
                         .unwrap(),
                     )
                 } else {
-                    // TODO multi sum
+                    // TODO multi sum with all yaml
                     Box::new(VarSumBuilder::new().build().unwrap())
                 }
             }
