@@ -174,6 +174,11 @@ fn load_yaml(file: &str, first_module_index: &mut i64) -> HashMap<i64, ChainCell
                         .unwrap(),
                     )
                 } else {
+                    if in_1_gain.is_some() || in_2_gain.is_some() || in_3_gain.is_some() {
+                        warn!("<b>For sum modules with a size greater than 3 is <yellow>not possible to specify the input gain</> <b>for each input. Instead, you have to specify it in the module itself.</>");
+                        warn!("  * found in module with id: {}", module_id);
+                    }
+
                     Box::new(
                         VarSumBuilder::with_all_yaml(name, input_amount, out_gain)
                             .build()

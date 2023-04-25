@@ -13,10 +13,12 @@ layout:
         name: master
         input-amount: 4
         out-gain: 0.8
-        in-1: 0.25
-        in-2: 0.25
-        in-3: 0.25
-        in-4: 0.25
+        # For sum modules greater than three we use a more flexible design which does not
+        # read the input gains. Instead, they should be specified in the previous module.
+        # in-1: 0.25
+        # in-2: 0.25
+        # in-3: 0.25
+        # in-4: 0.25
       auxiliaries:
         - aux:
             from-id: 2
@@ -33,22 +35,26 @@ layout:
       config:
         name: "C5"
         frequency: 523.25
+        amplitude: 0.25
   - module:
       id: 2
       type: oscillator
       config:
         name: "F5"
         frequency: 698.46
+        amplitude: 0.25
   - module:
       id: 3
       type: oscillator
       config:
         name: "G5"
         frequency: 783.99
+        amplitude: 0.25
   - module:
       id: 4
       type: oscillator
       config:
         name: "C6"
         frequency: 1046.50
+        amplitude: 0.25
 
