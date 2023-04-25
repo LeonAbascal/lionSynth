@@ -202,4 +202,59 @@ impl CoordinatorEntity {
         // POST OPERATIONS
         self.clock.inc();
     }
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::bundled_modules::debug::PassTrough;
+    use crate::bundled_modules::OscillatorBuilder;
+    use ringbuf::HeapRb;
+    use std::thread;
+
+    #[test]
+    fn test_wrappers() {
+        let mut wrapper_chain: Vec<Box<dyn ModuleWrapper>> = Vec::new();
+
+        let mut osc = OscillatorBuilder::new().build().unwrap();
+        let mut test_osc = OscillatorBuilder::new().build().unwrap();
+        let mut pt = PassTrough::new();
+
+        let rb1: HeapRb<f32> = HeapRb::new(10);
+        let rb2: HeapRb<f32> = HeapRb::new(10);
+        let (p1, c1) = rb1.split();
+        let (p2, mut c2) = rb2.split();
+
+        let mut w1 = GeneratorModuleWrapper::new(Box::new(osc), p1, vec![]);
+        let mut w2 = LinkerModuleWrapper::new(Box::new(pt), c1, p2, vec![]);
+
+        let time = 0.0;
+        w1.gen_sample(time);
+        w2.gen_sample(time);
+
+        let post_chain = c2.pop().unwrap();
+        assert_eq!(test_osc.get_sample(0.0, time), post_chain);
+
+        for time in 0..44100 {
+            let time = time as f32;
+            w1.gen_sample(time);
+            w2.gen_sample(time);
+
+            assert_eq!(test_osc.get_sample(0.0, time), c2.pop().unwrap());
+        }
+
+        for time in 0..44100 {
+            let time = time as f32;
+            w1.gen_sample(time);
+            w2.gen_sample(time);
+        }
+
+        let handle = thread::spawn(move || {
+            for time in 0..44100 {
+                if !c2.is_empty() {
+                    assert_eq!(test_osc.get_sample(0.0, time as f32), c2.pop().unwrap());
+                }
+            }
+        });
+
+        handle.join().unwrap();
+    }
 }
