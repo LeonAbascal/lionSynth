@@ -12,6 +12,7 @@
 
 use super::*;
 use crate::module::{Module, Parameter, ParameterBuilder};
+use simplelog::info;
 
 /// The [VarSum] will let you create a sum module with any amount of modules.
 ///
@@ -86,6 +87,14 @@ impl VarSumBuilder {
         self
     }
 
+    pub fn with_all_yaml(name: Option<&str>, in_count: i64, out_gain: Option<f64>) -> Self {
+        Self {
+            name: name.map(|x| x.to_string()),
+            in_count: Some(in_count as u32),
+            out_gain: out_gain.map(|x| x as f32),
+        }
+    }
+
     pub fn build(self) -> Result<VarSum, String> {
         let in_count = self.in_count.unwrap_or(2);
         let out_gain = self.out_gain.unwrap_or(1.0);
@@ -96,10 +105,10 @@ impl VarSumBuilder {
         };
 
         let mut inputs = vec![];
-        for i in 0..in_count {
+        for i in 2..=in_count {
             let param = ParameterBuilder::new(format!("in{}", i))
                 .with_min(AUDIO_RANGE_BOT)
-                .with_default(0.0)
+                .with_default(AUDIO_RANGE_BOT)
                 .with_max(AUDIO_RANGE_TOP)
                 .build()
                 .unwrap();

@@ -17,7 +17,7 @@ use std::thread::sleep;
 use std::time::Duration;
 use yaml_rust::{Yaml, YamlLoader};
 
-// TODO test size. Different signal durations may affected playback
+// TODO test size. Different signal durations may be affected playback
 const BATCH_SIZE_RT: usize = 1000;
 const YAML_VERSION: f64 = 0.5;
 
@@ -174,8 +174,11 @@ fn load_yaml(file: &str, first_module_index: &mut i64) -> HashMap<i64, ChainCell
                         .unwrap(),
                     )
                 } else {
-                    // TODO multi sum with all yaml
-                    Box::new(VarSumBuilder::new().build().unwrap())
+                    Box::new(
+                        VarSumBuilder::with_all_yaml(name, input_amount, out_gain)
+                            .build()
+                            .unwrap(),
+                    )
                 }
             }
             "osc_debug" => Box::new(OscDebug::new(SAMPLE_RATE)),
@@ -263,9 +266,12 @@ fn load_yaml(file: &str, first_module_index: &mut i64) -> HashMap<i64, ChainCell
         }
 
         if let Some(input_amount) = config["input-amount"].as_i64() {
-            if aux_count < input_amount {
+            if aux_count < input_amount - 1 {
+                // input amount specified - amount of directly routed inputs (one, currently)
                 warn!("<b>A {} module has been detected not to have every input routed to an <yellow>auxiliary</><b>.</>", module_type);
                 warn!("  |_ id: {}", module_id);
+                warn!("  |_ aux count: {}", aux_count);
+                warn!("  |_ input amt: {}", input_amount);
             }
         }
 

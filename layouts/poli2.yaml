@@ -1,5 +1,6 @@
 ---
 version: 0.5
+# This yaml plays A4 (A and its fourth, 5 semitones away)
 
 layout:
   - module:

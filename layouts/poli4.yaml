@@ -1,7 +1,7 @@
 ---
 version: 0.5
 # https://pages.mtu.edu/~suits/notefreqs.html
-# This yaml plays an Asus4 triad chord (A D E)
+# This YAML plays Csus4 plus the octave of the root (C F G C)
 
 layout:
   - module:
@@ -11,11 +11,12 @@ layout:
       input-from: 1
       config:
         name: master
-        input-amount: 3
-        out-gain: 0.9
-        in-1: 0.3
-        in-2: 0.3
-        in-3: 0.3
+        input-amount: 4
+        out-gain: 0.8
+        in-1: 0.25
+        in-2: 0.25
+        in-3: 0.25
+        in-4: 0.25
       auxiliaries:
         - aux:
             from-id: 2
@@ -23,21 +24,31 @@ layout:
         - aux:
             from-id: 3
             linked-with: in3
+        - aux:
+            from-id: 4
+            linked-with: in4
   - module:
       id: 1
       type: oscillator
       config:
-        name: "A4"
-        frequency: 440
+        name: "C5"
+        frequency: 523.25
   - module:
       id: 2
       type: oscillator
       config:
-        name: "D5"
-        frequency: 587.33
+        name: "F5"
+        frequency: 698.46
   - module:
       id: 3
       type: oscillator
       config:
-        name: "E5"
-        frequency: 659.25
+        name: "G5"
+        frequency: 783.99
+  - module:
+      id: 4
+      type: oscillator
+      config:
+        name: "C6"
+        frequency: 1046.50
+
