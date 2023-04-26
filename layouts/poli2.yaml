@@ -1,0 +1,32 @@
+---
+version: 0.5
+# This yaml plays A4 (A and its fourth, 5 semitones away)
+
+layout:
+  - module:
+      id: 0
+      type: sum
+      os-out: true
+      input-from: 1
+      config:
+        name: master
+        input-amount: 2
+        out-gain: 0.9
+        in-1: 0.5
+        in-2: 0.5
+      auxiliaries:
+        - aux:
+            from-id: 2
+            linked-with: in2
+  - module:
+      id: 1
+      type: oscillator
+      config:
+        name: "A4"
+        frequency: 440
+  - module:
+      id: 2
+      type: oscillator
+      config:
+        name: "D5"
+        frequency: 587.33

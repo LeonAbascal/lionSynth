@@ -1,8 +1,9 @@
 use crate::back_end::{get_preferred_config, write_data, Channels};
 use crate::bundled_modules::debug::*;
+use crate::bundled_modules::prelude::Sum3InBuilder;
 use crate::bundled_modules::*;
 use crate::module::{
-    AuxDataHolder, AuxInputBuilder, AuxiliaryInput, Clock, GeneratorModuleWrapper,
+    AuxDataHolder, AuxInputBuilder, AuxiliaryInput, CoordinatorEntity, GeneratorModuleWrapper,
     LinkerModuleWrapper, Module, ModuleProducer, ModuleWrapper,
 };
 use crate::SAMPLE_RATE;
@@ -16,8 +17,47 @@ use std::thread::sleep;
 use std::time::Duration;
 use yaml_rust::{Yaml, YamlLoader};
 
-// TODO test size. Different signal durations may affected playback
+// TODO test size. Different signal durations may be affected playback
 const BATCH_SIZE_RT: usize = 1000;
+const YAML_VERSION: &str = "0.5";
+
+use crate::layout_yaml::YamlParsingError::UnknownType;
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+#[non_exhaustive]
+pub enum YamlParsingError {
+    #[error("Missing document version number. Latest version: {0}")]
+    MissingVersionNumber(String),
+    // #[error("<b>YAML <red>version mismatch</><b>, using version <magenta>{0}</><b>. Latest version: <cyan>{1}</>")]
+    #[error("YAML version mismatch, using version {using}. Latest version: {latest}")]
+    VersionMismatch { using: String, latest: String },
+    #[error("Missing module ID.")]
+    MissingID,
+    #[error("Found a duplicated ID: {0}")]
+    DuplicatedID(i64),
+    #[error("Missing field: {0}")]
+    MissingField(String),
+    #[error("No module has been linked to the Operating System. Specify the tag 'os-out: true' in the last element of the chain.")]
+    MissingOpSysOutput,
+    #[error("Missing auxiliary 'lined-with'. Needed to know what parameter to update.")]
+    MissingAuxTag,
+    #[error("Missing auxiliary 'from-id'. Needed to know where the data comes from.")]
+    MissingAuxFromId,
+    #[error("Format wrong for field '{field_name}'. Supported format: {supported_format}")]
+    WrongFormat {
+        field_name: String,
+        supported_format: String,
+    },
+    #[error("Invalid value for '{field_name}' in module with id {module_id}")]
+    InvalidValue { field_name: String, module_id: i64 },
+    #[error("'{0}' type not known.")]
+    UnknownType(String),
+
+    // SUM MODULE
+    #[error("{0} is not a valid amount of inputs.")]
+    InvalidInputAmount(i64),
+}
 
 struct ChainCell {
     from_module: Option<i64>,
@@ -32,31 +72,12 @@ struct AuxInfo {
     min: Option<f32>,
 }
 
-// TODO move to back_end.rs?
-struct CoordinatorEntity {
-    clock: Clock,
-    wrapper_chain: LinkedList<Box<dyn ModuleWrapper>>,
-}
+fn load_yaml(
+    file: &str,
+    first_module_index: &mut i64,
+) -> Result<HashMap<i64, ChainCell>, YamlParsingError> {
+    use YamlParsingError::*;
 
-impl CoordinatorEntity {
-    pub fn new(sample_rate: i32, chain: LinkedList<Box<dyn ModuleWrapper>>) -> Self {
-        Self {
-            clock: Clock::new(sample_rate),
-            wrapper_chain: chain,
-        }
-    }
-
-    pub fn tick(&mut self) {
-        self.wrapper_chain.iter_mut().for_each(|module| {
-            module.gen_sample(self.clock.get_value());
-        });
-
-        // POST OPERATIONS
-        self.clock.inc();
-    }
-}
-
-fn load_yaml(file: &str, first_module_index: &mut i64) -> HashMap<i64, ChainCell> {
     let mut first_module: Option<i64> = None;
     let path = format!("layouts/{}", file);
     info!("<b>Loading data from <red>{}</><b>.</>", path);
@@ -65,12 +86,26 @@ fn load_yaml(file: &str, first_module_index: &mut i64) -> HashMap<i64, ChainCell
     let doc = YamlLoader::load_from_str(yaml).unwrap();
     let doc = &doc[0];
 
-    let version = *&doc["version"].as_f64().unwrap_or(0.0);
-    let layout = &doc["layout"];
+    let version = &doc["version"];
+    let version = match version {
+        Yaml::Real(_) => version.as_f64().map(|x| x.to_string()),
+        Yaml::String(_) => version.as_str().map(|x| x.to_string()),
+        Yaml::BadValue => return Err(MissingVersionNumber(YAML_VERSION.to_string())),
+        _ => {
+            return Err(WrongFormat {
+                field_name: String::from("version"),
+                supported_format: String::from("f64, str"),
+            })
+        }
+    };
 
-    if version != 0.4f64 {
+    let version = version.unwrap();
+    if version != YAML_VERSION {
         error!("<b>Please use the <red>latest YAML</> <b>version.</>");
-        panic!();
+        return Err(VersionMismatch {
+            using: version.to_string(),
+            latest: YAML_VERSION.to_string(),
+        });
     } else {
         info!(
             "<b>Using <magenta>YAML parsing</> <b>version: <b><cyan>{}</>",
@@ -81,24 +116,35 @@ fn load_yaml(file: &str, first_module_index: &mut i64) -> HashMap<i64, ChainCell
     info!("<b>Creating module chain.</>");
     let mut module_chain: HashMap<i64, ChainCell> = HashMap::new();
 
+    let layout = &doc["layout"];
+    // TODO add error for missing layout
     for module in layout.clone().into_iter() {
         let module = &module["module"];
         let module_type = &module["type"];
-        let module_id = module["id"].as_i64();
+        let module_id = &module["id"];
 
         // ID CHECKS
-        if module_id.is_none() {
-            error!("<b>Missing module <red>ID</><b>.</>");
-        }
+        let module_id = match module_id {
+            Yaml::Integer(x) => *x,
+            Yaml::BadValue => {
+                error!("<b>Missing module <red>ID</><b>.</>");
 
-        let module_id =
-            module_id.expect("A module is missing its ID. Check the logs for more information");
+                return Err(MissingField(String::from("ID")));
+            }
+            _ => {
+                error!("<b>Module ID could not be <red>parsed</><b>.</>");
+                return Err(WrongFormat {
+                    field_name: String::from("id"),
+                    supported_format: String::from("i64"),
+                });
+            }
+        };
 
         info!("> Processing <cyan>module {}</>", module_id);
 
         if module_chain.contains_key(&module_id) {
             error!("<b>Found a <red>duplicated ID</> <b>value.</>");
-            panic!("Duplicated ID was found when parsing the YAML. Please check the logs for more information.");
+            return Err(DuplicatedID(module_id));
         }
 
         // FIRST BOOL
@@ -115,7 +161,7 @@ fn load_yaml(file: &str, first_module_index: &mut i64) -> HashMap<i64, ChainCell
         // TYPE
         if module_type.as_str().is_none() {
             error!("<b>Module <red>type</> <b>not specified.</>");
-            panic!("One module is missing their type. Please check the logs for more information.");
+            return Err(MissingField(String::from("type")));
         }
 
         let module_type = module_type.as_str().unwrap();
@@ -128,25 +174,89 @@ fn load_yaml(file: &str, first_module_index: &mut i64) -> HashMap<i64, ChainCell
 
         let generated_module: Box<dyn Module> = match module_type {
             "oscillator" => {
-                let sample_rate = config["sample_rate"].as_i64();
-                let amp = config["amplitude"].as_f64();
-                let freq = config["frequency"].as_f64();
-                let phase = config["phase"].as_f64();
+                if !config.is_null() {
+                    let sample_rate = config["sample_rate"].as_i64();
+                    let amp = config["amplitude"].as_f64();
+                    let freq = config["frequency"].as_f64();
+                    let phase = config["phase"].as_f64();
 
-                Box::new(
-                    OscillatorBuilder::new()
-                        .with_all_yaml_fmt(name, sample_rate, amp, freq, phase)
-                        .build()
-                        .unwrap(),
-                )
+                    Box::new(
+                        OscillatorBuilder::with_all_yaml_fmt(name, sample_rate, amp, freq, phase)
+                            .build()
+                            .unwrap(),
+                    )
+                } else {
+                    info!("No configuration found for oscillator");
+                    Box::new(OscillatorBuilder::new().build().unwrap())
+                }
             }
 
+            "sum" => {
+                let input_amount = config["input-amount"].as_i64();
+
+                if input_amount.is_none() {
+                    error!(
+                        "<b>Invalid format or no <red>input amount</> <b>provided for sum module. ID: {}.</>",
+                        module_id
+                    );
+                    return Err(MissingField(String::from("input-amount")));
+                }
+
+                let input_amount = input_amount.unwrap();
+
+                let out_gain = &config["out-gain"];
+                let in_1_gain = &config["in-1"];
+                let in_2_gain = &config["in-2"];
+                let in_3_gain = &config["in-3"];
+
+                let items: Vec<Option<f64>> = [out_gain, in_1_gain, in_2_gain, in_3_gain]
+                    .into_iter()
+                    .map(|yaml| match yaml {
+                        Yaml::Real(_) => yaml.as_f64(),
+                        Yaml::Integer(_) => yaml.as_i64().map(|x| x as f64),
+                        _ => None,
+                    })
+                    .collect();
+                let (out_gain, in_1_gain, in_2_gain, in_3_gain) =
+                    (items[0], items[1], items[2], items[3]);
+
+                if input_amount <= 1 {
+                    error!("<b><redInvalid amount</> <b>of inputs declared</>");
+                    error!("  |_ id: {}", module_id);
+                    return Err(InvalidInputAmount(input_amount));
+                } else if input_amount == 2 {
+                    Box::new(
+                        Sum2InBuilder::with_all_yaml(name, out_gain, in_1_gain, in_2_gain)
+                            .build()
+                            .unwrap(),
+                    )
+                } else if input_amount == 3 {
+                    Box::new(
+                        Sum3InBuilder::with_all_yaml(
+                            name, out_gain, in_1_gain, in_2_gain, in_3_gain,
+                        )
+                        .build()
+                        .unwrap(),
+                    )
+                } else {
+                    if in_1_gain.is_some() || in_2_gain.is_some() || in_3_gain.is_some() {
+                        warn!("<b>For sum modules with a size greater than 3 is <yellow>not possible to specify the input gain</> <b>for each input. Instead, you have to specify it in the module itself.</>");
+                        warn!("  * found in module with id: {}", module_id);
+                    }
+
+                    Box::new(
+                        VarSumBuilder::with_all_yaml(name, input_amount, out_gain)
+                            .build()
+                            .unwrap(),
+                    )
+                }
+            }
             "osc_debug" => Box::new(OscDebug::new(SAMPLE_RATE)),
             "pass_through" => Box::new(PassTrough::new()),
 
             _ => {
-                error!("<b>Module type <red>not found</><b>. ID: {}.</>", module_id);
-                panic!("There is a module with their type not specified. Please check the logs for more information");
+                error!("<b>Module type <red>not known</><b>. ID: {}.</>", module_id);
+                return Err(UnknownType(module_type.to_string()));
             }
         };
 
@@ -156,19 +266,30 @@ fn load_yaml(file: &str, first_module_index: &mut i64) -> HashMap<i64, ChainCell
         let mut auxiliaries: Vec<AuxInfo> = Vec::new();
         info!("  |_ looking for auxiliaries");
 
+        let mut aux_count = 0;
         for aux in module["auxiliaries"].clone().into_iter() {
+            aux_count += 1;
             let aux = &aux["aux"];
 
             let from_id = &aux["from-id"];
             let id_from = match from_id {
                 Yaml::Real(_) => from_id.as_f64().map(|x| x as i64),
                 Yaml::Integer(_) => from_id.as_i64(),
-                _ => {
-                    warn!("<b>Missing or invalid format for <yellow>id-from</> <b>value.</>");
+
+                Yaml::BadValue => {
+                    warn!("<b>Missing <yellow>from-id</> <b>value.</>");
                     error!(
-                        "<b>id-from parameter is <red>compulsory</> <b>for auxiliary inputs to know where the data goes to.</>"
+                        "<b>from-id parameter is <red>compulsory</> <b>for auxiliary inputs to know where the data goes to.</>"
                     );
-                    None
+                    return Err(MissingAuxFromId);
+                }
+
+                _ => {
+                    error!("<b>Invalid format for <red>from-id</> <b>value.</>");
+                    return Err(WrongFormat {
+                        field_name: String::from("from-id"),
+                        supported_format: String::from("i64"),
+                    });
                 }
             };
 
@@ -178,18 +299,26 @@ fn load_yaml(file: &str, first_module_index: &mut i64) -> HashMap<i64, ChainCell
                 Yaml::Integer(_) => tag.as_i64().map(|x| x.to_string()),
                 Yaml::Boolean(_) => tag.as_bool().map(|x| x.to_string()),
                 Yaml::String(_) => tag.as_str().map(|x| x.to_string()),
-                _ => {
-                    warn!("<b>Missing or invalid format for <yellow>linked-with</> <b>value.</>");
+                Yaml::BadValue => {
+                    warn!("<b>Missing <yellow>linked-with</> <b>value.</>");
                     error!(
                     "<b>linked-with parameter is <red>compulsory</> <b>for auxiliary inputs to know to which parameter maps to.</>"
                 );
-                    None
+                    return Err(MissingAuxTag);
+                }
+                _ => {
+                    error!("<b>Invalid format for <red>linked-with</> <b>value.</>");
+                    return Err(WrongFormat {
+                        field_name: String::from("linked-with"),
+                        supported_format: String::from("str"),
+                    });
                 }
             };
 
             let max = match &aux["max"] {
                 Yaml::Real(_) => aux["max"].as_f64().map(|x| x as f32),
                 Yaml::Integer(_) => aux["max"].as_i64().map(|x| x as f32),
+                Yaml::BadValue => None, // not found
                 _ => {
                     warn!("<b>Invalid format for <yellow>max</> <b>value.</>");
                     None
@@ -199,6 +328,7 @@ fn load_yaml(file: &str, first_module_index: &mut i64) -> HashMap<i64, ChainCell
             let min = match &aux["min"] {
                 Yaml::Real(_) => aux["min"].as_f64().map(|x| x as f32),
                 Yaml::Integer(_) => aux["min"].as_i64().map(|x| x as f32),
+                Yaml::BadValue => None, // not found
                 _ => {
                     warn!("<b>Invalid format for <yellow>min</> <b>value.</>");
                     None
@@ -221,6 +351,16 @@ fn load_yaml(file: &str, first_module_index: &mut i64) -> HashMap<i64, ChainCell
             });
         }
 
+        if let Some(input_amount) = config["input-amount"].as_i64() {
+            if aux_count < input_amount - 1 {
+                // input amount specified - amount of directly routed inputs (one, currently)
+                warn!("<b>A {} module has been detected not to have every input routed to an <yellow>auxiliary</><b>.</>", module_type);
+                warn!("  |_ id: {}", module_id);
+                warn!("  |_ aux count: {}", aux_count);
+                warn!("  |_ input amt: {}", input_amount);
+            }
+        }
+
         module_chain.insert(
             module_id,
             ChainCell {
@@ -233,21 +373,26 @@ fn load_yaml(file: &str, first_module_index: &mut i64) -> HashMap<i64, ChainCell
 
     if first_module.is_none() {
         error!("<b>No module linked to <red>Operating System</><b>. Add field 'os-out: true' to the last element in the chain.</>");
-        panic!("No module has been linked to the Operating specify the tag 'os-out: true' in the last element in the chain.");
+        return Err(MissingOpSysOutput);
     }
 
     *first_module_index = first_module.unwrap();
     info!("First module's index: {}", first_module_index);
 
-    module_chain
+    Ok(module_chain)
 }
 
-pub fn buffer_from_yaml(file: &str, buffer_length: usize) -> Vec<f32> {
+pub fn buffer_from_yaml(file: &str, buffer_length: usize, sample_rate: i32) -> Vec<f32> {
     let mut first_module = 0i64;
     let mut module_chain = load_yaml(file, &mut first_module);
 
     info!("<b>Filling buffer:</>\n");
-    fill_buffer(&mut module_chain, first_module, buffer_length)
+    fill_buffer(
+        &mut module_chain.unwrap(),
+        first_module,
+        buffer_length,
+        sample_rate,
+    )
 }
 
 pub fn play_from_yaml(
@@ -262,9 +407,15 @@ pub fn play_from_yaml(
     let ring_buffer: HeapRb<f32> = HeapRb::new(BATCH_SIZE_RT);
     let (prod, mut cpal_consumer) = ring_buffer.split();
 
-    build_wrapper_chain(&mut module_chain, first_module, &mut wrapper_chain, prod);
+    build_wrapper_chain(
+        &mut module_chain.unwrap(),
+        first_module,
+        &mut wrapper_chain,
+        prod,
+    );
 
-    let mut coordinator = CoordinatorEntity::new(SAMPLE_RATE, wrapper_chain);
+    let mut coordinator = CoordinatorEntity::new(sample_rate, wrapper_chain);
+    coordinator.display_order();
 
     // CPAL CONFIGURATION
     let mut logger = simplelog::__private::paris::Logger::new();
@@ -309,17 +460,9 @@ pub fn play_from_yaml(
 
     let mut count = 0;
     while count < (signal_duration as f32 * sample_rate as f32 / 1000.0) as i32 {
-        if !coordinator
-            .wrapper_chain
-            .front()
-            .unwrap()
-            .get_producer()
-            .is_full()
-        {
+        if !coordinator.is_full() {
             coordinator.tick();
             count += 1;
-        } else {
-            sleep(Duration::from_millis(5));
         }
     }
 
@@ -375,6 +518,7 @@ fn fill_buffer(
     module_chain: &mut HashMap<i64, ChainCell>,
     current_pos: i64,
     buffer_size: usize,
+    sample_rate: i32,
 ) -> Vec<f32> {
     let mut current_module = module_chain.remove(&current_pos).unwrap();
     let next_id = current_module.from_module;
@@ -383,7 +527,7 @@ fn fill_buffer(
     let mut aux_list: Vec<AuxiliaryInput> = Vec::new();
 
     for aux_info in current_module.auxiliaries {
-        let aux_buffer = fill_buffer(module_chain, aux_info.from_module, buffer_size);
+        let aux_buffer = fill_buffer(module_chain, aux_info.from_module, buffer_size, sample_rate);
         let aux = AuxInputBuilder::new(&aux_info.linked_with, AuxDataHolder::Batch(aux_buffer))
             .with_all_yaml(aux_info.max, aux_info.min)
             .build()
@@ -397,15 +541,19 @@ fn fill_buffer(
         // LINKER MODULE (PROCESS BUFFER) - RECURSIVE STEP
 
         let next_id = next_id.unwrap();
-        let mut buffer = fill_buffer(module_chain, next_id, buffer_size);
-        current_module.module.fill_buffer(&mut buffer, aux_list);
+        let mut buffer = fill_buffer(module_chain, next_id, buffer_size, sample_rate);
+        current_module
+            .module
+            .fill_buffer(&mut buffer, sample_rate, aux_list);
         buffer
     } else {
         // GENERATOR MODULE (CREATE BUFFER) - BASE CASE
 
         let mut buffer = vec![0.0f32; buffer_size];
 
-        current_module.module.fill_buffer(&mut buffer, aux_list);
+        current_module
+            .module
+            .fill_buffer(&mut buffer, sample_rate, aux_list);
         buffer
     };
 }
@@ -447,11 +595,11 @@ fn build_wrapper_chain(
         // We fist add the AUXILIARY
         build_wrapper_chain(module_chain, next_id.unwrap(), wrapper_chain, prod);
         // and then the current module
-        wrapper_chain.push_front(Box::new(wrapper));
+        wrapper_chain.push_back(Box::new(wrapper));
     } else {
         // GENERATOR MODULE - BASE CASE
         let wrapper = GeneratorModuleWrapper::new(current_module.module, producer, aux_list);
 
-        wrapper_chain.push_front(Box::new(wrapper));
+        wrapper_chain.push_back(Box::new(wrapper));
     }
 }

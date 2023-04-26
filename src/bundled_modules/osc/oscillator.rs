@@ -1,8 +1,6 @@
-use crate::module::{AuxiliaryInput, Module, Parameter, ParameterBuilder};
+use crate::module::{Module, Parameter, ParameterBuilder};
 use crate::SAMPLE_RATE;
 use std::f32::consts::PI;
-use std::fmt;
-use std::fmt::{write, Formatter};
 
 /// The oscillator is the genesis of the chain. It does generate a raw signal
 /// following certain properties defined by its attributes.
@@ -179,7 +177,6 @@ impl OscillatorBuilder {
     }
 
     pub fn with_all_yaml_fmt(
-        mut self,
         name: Option<&str>,
         sample_rate: Option<i64>,
         amplitude: Option<f64>,
@@ -207,12 +204,13 @@ impl OscillatorBuilder {
             None => None,
         };
 
-        self.name = name;
-        self.sample_rate = sample_rate;
-        self.amplitude = amplitude;
-        self.frequency = frequency;
-        self.phase = phase;
-        self
+        Self {
+            name,
+            sample_rate,
+            amplitude,
+            frequency,
+            phase,
+        }
     }
 
     /// Tries to generate an Oscillator from the given configuration.

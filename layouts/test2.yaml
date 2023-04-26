@@ -1,5 +1,6 @@
 ---
 version: 0.5
+# [ 2 -> 1 -> 0 ] -> OS
 
 layout:
   - module:
@@ -9,19 +10,12 @@ layout:
       input-from: 1
   - module:
       id: 1
+      type: pass_through
+      input-from: 2
+  - module:
+      id: 2
       type: oscillator
       config:
         name: Carrier
         frequency: 440.0
         amplitude: 0.1
-      auxiliaries:
-        - aux:
-            from-id: 2
-            linked-with: frequency
-            max: 20
-            min: 10
-  - module:
-      id: 2
-      type: oscillator
-      config:
-        name: Modulator

@@ -1,0 +1,43 @@
+---
+version: 0.5
+# https://pages.mtu.edu/~suits/notefreqs.html
+# This yaml plays an Asus4 triad chord (A D E)
+
+layout:
+  - module:
+      id: 0
+      type: sum
+      os-out: true
+      input-from: 1
+      config:
+        name: master
+        input-amount: 3
+        out-gain: 0.9
+        in-1: 0.3
+        in-2: 0.3
+        in-3: 0.3
+      auxiliaries:
+        - aux:
+            from-id: 2
+            linked-with: in2
+        - aux:
+            from-id: 3
+            linked-with: in3
+  - module:
+      id: 1
+      type: oscillator
+      config:
+        name: "A4"
+        frequency: 440
+  - module:
+      id: 2
+      type: oscillator
+      config:
+        name: "D5"
+        frequency: 587.33
+  - module:
+      id: 3
+      type: oscillator
+      config:
+        name: "E5"
+        frequency: 659.25

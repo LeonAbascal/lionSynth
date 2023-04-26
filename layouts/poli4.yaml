@@ -1,0 +1,60 @@
+---
+version: 0.5
+# https://pages.mtu.edu/~suits/notefreqs.html
+# This YAML plays Csus4 plus the octave of the root (C F G C)
+
+layout:
+  - module:
+      id: 0
+      type: sum
+      os-out: true
+      input-from: 1
+      config:
+        name: master
+        input-amount: 4
+        out-gain: 0.8
+        # For sum modules greater than three we use a more flexible design which does not
+        # read the input gains. Instead, they should be specified in the previous module.
+        # in-1: 0.25
+        # in-2: 0.25
+        # in-3: 0.25
+        # in-4: 0.25
+      auxiliaries:
+        - aux:
+            from-id: 2
+            linked-with: in2
+        - aux:
+            from-id: 3
+            linked-with: in3
+        - aux:
+            from-id: 4
+            linked-with: in4
+  - module:
+      id: 1
+      type: oscillator
+      config:
+        name: "C5"
+        frequency: 523.25
+        amplitude: 0.25
+  - module:
+      id: 2
+      type: oscillator
+      config:
+        name: "F5"
+        frequency: 698.46
+        amplitude: 0.25
+  - module:
+      id: 3
+      type: oscillator
+      config:
+        name: "G5"
+        frequency: 783.99
+        amplitude: 0.25
+  - module:
+      id: 4
+      type: oscillator
+      config:
+        name: "C6"
+        frequency: 1046.50
+        amplitude: 0.25
+
