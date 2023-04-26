@@ -17,6 +17,7 @@ simplelog = { version = "0.12.1", features = ["paris"] }
 hound = "3.5.0"
 yaml-rust = "0.4.4"
 ringbuf = "0.3.3"
+crossbeam = "0.8.2"
 
 [dev-dependencies]
 log = "0.4.17"

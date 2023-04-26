@@ -324,6 +324,7 @@ pub fn play_from_yaml(
     build_wrapper_chain(&mut module_chain, first_module, &mut wrapper_chain, prod);
 
     let mut coordinator = CoordinatorEntity::new(SAMPLE_RATE, wrapper_chain);
+    coordinator.display_order();
 
     // CPAL CONFIGURATION
     let mut logger = simplelog::__private::paris::Logger::new();
@@ -368,17 +369,9 @@ pub fn play_from_yaml(
 
     let mut count = 0;
     while count < (signal_duration as f32 * sample_rate as f32 / 1000.0) as i32 {
-        if !coordinator
-            .get_mut_wrapper_chain()
-            .front()
-            .unwrap()
-            .get_producer()
-            .is_full()
-        {
+        if !coordinator.is_full() {
             coordinator.tick();
             count += 1;
-        } else {
-            sleep(Duration::from_millis(5));
         }
     }
 
@@ -506,11 +499,11 @@ fn build_wrapper_chain(
         // We fist add the AUXILIARY
         build_wrapper_chain(module_chain, next_id.unwrap(), wrapper_chain, prod);
         // and then the current module
-        wrapper_chain.push_front(Box::new(wrapper));
+        wrapper_chain.push_back(Box::new(wrapper));
     } else {
         // GENERATOR MODULE - BASE CASE
         let wrapper = GeneratorModuleWrapper::new(current_module.module, producer, aux_list);
 
-        wrapper_chain.push_front(Box::new(wrapper));
+        wrapper_chain.push_back(Box::new(wrapper));
     }
 }

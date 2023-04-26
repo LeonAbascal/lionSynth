@@ -21,7 +21,8 @@ pub fn pop_auxiliaries(
                 None => {
                     let prev_value = *current_values.get(&tag).unwrap();
                     warn!("<b>Values of auxiliary list <yellow>exhausted</><b>. It is perfectly normal for the first samples of the chain.</>");
-                    warn!("Defaulting to previous value: {}", prev_value);
+                    warn!("  |_ Defaulting to previous value: {}", prev_value);
+                    warn!("  |_ aux: {}", tag);
                     prev_value // Returns the previous value
                 }
             };

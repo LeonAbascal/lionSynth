@@ -1,0 +1,21 @@
+---
+version: 0.5
+# [ 2 -> 1 -> 0 ] -> OS
+
+layout:
+  - module:
+      id: 0
+      type: pass_through
+      os-out: true
+      input-from: 1
+  - module:
+      id: 1
+      type: pass_through
+      input-from: 2
+  - module:
+      id: 2
+      type: oscillator
+      config:
+        name: Carrier
+        frequency: 440.0
+        amplitude: 0.1
