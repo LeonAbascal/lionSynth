@@ -110,8 +110,13 @@ pub trait Module {
     /// # Returns
     /// The last value of the clock.
     // TODO stereo
-    fn fill_buffer(&mut self, buffer: &mut Vec<f32>, auxiliaries: Vec<AuxiliaryInput>) -> f32 {
-        self.fill_buffer_at(buffer, 0.0, auxiliaries)
+    fn fill_buffer(
+        &mut self,
+        buffer: &mut Vec<f32>,
+        sample_rate: i32,
+        auxiliaries: Vec<AuxiliaryInput>,
+    ) -> f32 {
+        self.fill_buffer_at(buffer, 0.0, sample_rate, auxiliaries)
     }
 
     /// Does the same as [`fill_buffer`](fn@Module::fill_buffer) function though a starting time
@@ -129,6 +134,7 @@ pub trait Module {
         &mut self,
         buffer: &mut Vec<f32>,
         start_at: f32,
+        sample_rate: i32,
         mut auxiliaries: Vec<AuxiliaryInput>,
     ) -> f32 {
         #[cfg(feature = "verbose_modules")]
@@ -140,7 +146,7 @@ pub trait Module {
         // maybe receive a closure with popping the values?
         warn!("<b>A <u>custom implementation</><b> for buffer filling with auxiliary inputs is recommended for better <yellow>performance</><b>.</>");
 
-        let mut clock = Clock::new_at(44100, start_at); // TODO add get_sample_rate to Module trait
+        let mut clock = Clock::new_at(sample_rate, start_at);
 
         #[cfg(feature = "verbose_modules")]
         {

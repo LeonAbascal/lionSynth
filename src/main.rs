@@ -38,7 +38,7 @@ fn main() -> Result<(), anyhow::Error> {
     let signal_duration: i32 = 1000; // milliseconds
     let buffer_size: usize = (signal_duration * SAMPLE_RATE / 1000) as usize;
 
-    let stream_buffer = buffer_from_yaml("poli4.yaml", buffer_size);
+    let stream_buffer = buffer_from_yaml("poli4.yaml", buffer_size, SAMPLE_RATE);
     output_wav(stream_buffer.clone(), "test.wav", SAMPLE_RATE);
 
     play_buffer(stream_buffer, signal_duration, SAMPLE_RATE).expect("Error during playback.");
@@ -70,13 +70,14 @@ fn test() {
     let mut buffer1 = vec![0.0f32; BUFFER_SIZE];
     let mut buffer2 = vec![0.0f32; BUFFER_SIZE];
 
-    in1_osc.fill_buffer(&mut buffer1, vec![]);
-    in2_osc.fill_buffer(&mut buffer2, vec![]);
+    in1_osc.fill_buffer(&mut buffer1, SAMPLE_RATE, vec![]);
+    in2_osc.fill_buffer(&mut buffer2, SAMPLE_RATE, vec![]);
 
     assert_eq!(buffer1, buffer2);
 
     sum.fill_buffer(
         &mut buffer1,
+        SAMPLE_RATE,
         vec![AuxInputBuilder::new("in2", AuxDataHolder::Batch(buffer2))
             .with_min(-1.0)
             .with_max(1.0)

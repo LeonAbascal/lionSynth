@@ -3,8 +3,19 @@ use crate::module::*;
 use simplelog::{info, warn};
 use std::collections::LinkedList;
 
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+#[non_exhaustive]
+pub enum WrapperError {
+    #[error("Consumer empty in module {0}")]
+    ConsumerExhausted(String),
+    #[error("Producer full in module {0}")]
+    ProducerFull(String),
+}
+
 pub trait ModuleWrapper {
-    fn gen_sample(&mut self, time: f32) -> Result<(), String>;
+    fn gen_sample(&mut self, time: f32) -> Result<(), WrapperError>;
     fn get_name(&self) -> String;
     fn get_producer(&self) -> &ModuleProducer;
     fn get_mut_producer(&mut self) -> &mut ModuleProducer;
@@ -51,22 +62,18 @@ impl LinkerModuleWrapper {
 }
 
 impl ModuleWrapper for LinkerModuleWrapper {
-    fn gen_sample(&mut self, time: f32) -> Result<(), String> {
+    fn gen_sample(&mut self, time: f32) -> Result<(), WrapperError> {
         if self.consumer.is_empty() {
-            // warn!("<b>Buffer <yellow>empty</><b> in Linker Module.</>");
-            // warn!("  |_ name: {}", self.module.get_name());
-            Err(String::from(format!(
-                "Consumer empty at {}",
-                self.module.get_name()
-            )))
+            warn!("<b>Buffer <yellow>empty</><b> in Linker Module.</>");
+            warn!("  |_ name: {}", self.module.get_name());
+
+            Err(WrapperError::ConsumerExhausted(self.module.get_name()))
         } else {
             if self.producer.is_full() {
-                // warn!("<b>Buffer <yellow>full</><b> in Linker Module.</>");
-                // warn!("  |_ name: {}", self.module.get_name());
-                Err(String::from(format!(
-                    "Producer full at {}",
-                    self.module.get_name()
-                )))
+                warn!("<b>Buffer <yellow>full</><b> in Linker Module.</>");
+                warn!("  |_ name: {}", self.module.get_name());
+
+                Err(WrapperError::ProducerFull(self.module.get_name()))
             } else {
                 let prev = self.consumer.pop().unwrap();
 
@@ -135,14 +142,11 @@ impl GeneratorModuleWrapper {
 }
 
 impl ModuleWrapper for GeneratorModuleWrapper {
-    fn gen_sample(&mut self, time: f32) -> Result<(), String> {
+    fn gen_sample(&mut self, time: f32) -> Result<(), WrapperError> {
         if self.producer.is_full() {
             warn!("<b>Buffer <yellow>full</><b> in Generator Module.</>");
             warn!("  |_ name: {}", self.module.get_name());
-            Err(String::from(format!(
-                "Producer full at {}",
-                self.module.get_name()
-            )))
+            Err(WrapperError::ProducerFull(self.module.get_name()))
         } else {
             let aux_values = pop_auxiliaries(
                 &mut self.aux_inputs,
@@ -232,19 +236,9 @@ impl CoordinatorEntity {
         }
     }
 
-    pub fn get_mut_wrapper_chain(&mut self) -> &mut LinkedList<Box<dyn ModuleWrapper>> {
-        &mut self.wrapper_chain
-    }
-
     pub fn tick(&mut self) {
         self.wrapper_chain.iter_mut().for_each(|module| {
-            match module.gen_sample(self.clock.get_value()) {
-                Ok(_) => {}
-                Err(err_msg) => {
-                    warn!("Error generating sample:");
-                    warn!("  |_ {}", err_msg)
-                }
-            };
+            module.gen_sample(self.clock.get_value()).unwrap();
         });
 
         // POST OPERATIONS
