@@ -211,15 +211,16 @@ mod test {
         let mut buffer2 = vec![0.0f32; BUFFER_SIZE];
         let mut buffer3 = vec![0.0f32; BUFFER_SIZE];
 
-        in1_osc.fill_buffer(&mut buffer1, vec![]);
-        in2_osc.fill_buffer(&mut buffer2, vec![]);
-        in3_osc.fill_buffer(&mut buffer3, vec![]);
+        in1_osc.fill_buffer(&mut buffer1, SAMPLE_RATE, vec![]);
+        in2_osc.fill_buffer(&mut buffer2, SAMPLE_RATE, vec![]);
+        in3_osc.fill_buffer(&mut buffer3, SAMPLE_RATE, vec![]);
 
         assert_eq!(buffer1, buffer2);
         assert_eq!(buffer1, buffer3);
 
         sum.fill_buffer(
             &mut buffer1,
+            SAMPLE_RATE,
             vec![
                 AuxInputBuilder::new("in2", AuxDataHolder::Batch(buffer2))
                     .with_max(1.0)
