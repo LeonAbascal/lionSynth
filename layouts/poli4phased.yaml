@@ -1,0 +1,82 @@
+---
+version: 0.5
+# https://pages.mtu.edu/~suits/notefreqs.html
+# This YAML plays Csus4 plus the octave of the root (C F G C)
+# Phase shift calculation: http://www.sengpielaudio.com/calculator-centsratio.htm
+
+layout:
+  - module:
+      id: 0
+      type: sum
+      os-out: true
+      input-from: 1
+      config:
+        name: master
+        input-amount: 6
+        out-gain: 0.8
+        # For sum modules greater than three we use a more flexible design which does not
+        # read the input gains. Instead, they should be specified in the previous module.
+        # in-1: 0.25
+        # in-2: 0.25
+        # in-3: 0.25
+        # in-4: 0.25
+      auxiliaries:
+        - aux:
+            from-id: 2
+            linked-with: in2
+        - aux:
+            from-id: 3
+            linked-with: in3
+        - aux:
+            from-id: 4
+            linked-with: in4
+        - aux:
+            from-id: 5
+            linked-with: in5
+        - aux:
+            from-id: 6
+            linked-with: in6
+
+  - module:
+      id: 1
+      type: oscillator
+      config:
+        name: "C5"
+        frequency: 523.25
+        amplitude: 0.125
+  - module:
+      id: 2
+      type: oscillator
+      config:
+        name: "C5 phased"
+        frequency: 529.32
+        amplitude: 0.125
+  - module:
+      id: 3
+      type: oscillator
+      config:
+        name: "F5"
+        frequency: 698.46
+        amplitude: 0.125
+  - module:
+      id: 4
+      type: oscillator
+      config:
+        name: "F5 phased"
+        frequency: 706.57
+        amplitude: 0.125
+  - module:
+      id: 5
+      type: oscillator
+      config:
+        name: "G5"
+        frequency: 783.99
+        amplitude: 0.125
+  - module:
+      id: 6
+      type: oscillator
+      config:
+        name: "G5 phased"
+        frequency: 793.09
+        amplitude: 0.125
+

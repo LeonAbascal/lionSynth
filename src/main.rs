@@ -38,11 +38,11 @@ fn main() -> Result<(), anyhow::Error> {
     let signal_duration: i32 = 1000; // milliseconds
     let buffer_size: usize = (signal_duration * SAMPLE_RATE / 1000) as usize;
 
-    let stream_buffer = buffer_from_yaml("poli4.yaml", buffer_size, SAMPLE_RATE);
+    let stream_buffer = buffer_from_yaml("poli4phased.yaml", buffer_size, SAMPLE_RATE);
     output_wav(stream_buffer.clone(), "test.wav", SAMPLE_RATE);
 
     play_buffer(stream_buffer, signal_duration, SAMPLE_RATE).expect("Error during playback.");
-    play_from_yaml("test.yaml", signal_duration, SAMPLE_RATE).expect("Error during playback.");
+    play_from_yaml("poli4.yaml", signal_duration, SAMPLE_RATE).expect("Error during playback.");
     info!("<green><tick></> <b>Program finished <green>successfully</><b>.</>");
     Ok(())
 }
