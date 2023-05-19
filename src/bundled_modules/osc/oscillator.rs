@@ -1,7 +1,10 @@
+use crate::bundled_modules::osc::oscillator_math::{OscillatorMath, WaveShape};
 use crate::module::{Module, Parameter, ParameterBuilder};
 use crate::SAMPLE_RATE;
+use simplelog::{error, info};
 use std::f32::consts::PI;
 
+// TODO: add wave shape to doc
 /// The oscillator is the genesis of the chain. It does generate a raw signal
 /// following certain properties defined by its attributes.
 ///
@@ -41,15 +44,31 @@ pub struct Oscillator {
     amplitude: Parameter,
     /// The frequency of the wave. Translates to tone.
     frequency: Parameter,
-    ///
+    /// The phase of the wave, ie, the point at which the cycle starts.
     phase: Parameter,
+    ///
+    wave_shape: WaveShape,
     /// Name of the module (debugging)
     name: String,
 }
 
 impl Module for Oscillator {
     fn behavior(&self, _in_data: f32, time: f32) -> f32 {
-        ((time * self.get_frequency() * 2.0 * PI) + self.get_phase()).sin() * self.get_amplitude()
+        let mut value = ((time * self.get_frequency() * 2.0 * PI) + self.get_phase());
+
+        value = match self.get_wave() {
+            WaveShape::Saw => value.saw(),
+            WaveShape::Square => value.sqr(),
+            WaveShape::Pulse(x) => value.pulse(*x),
+            WaveShape::Sine => value.sin(),
+            WaveShape::Triangle => value.tri(),
+            _ => {
+                error!("<b>Wave shape not supported. Generating a sine wave by default.</>");
+                value.sin()
+            }
+        };
+
+        return value * self.get_amplitude();
     }
 
     fn get_parameters(&self) -> Option<Vec<&Parameter>> {
@@ -96,6 +115,11 @@ impl Oscillator {
         self.phase.set(phase);
     }
 
+    /// Method for setting the shape of the wave.
+    pub fn set_wave(&mut self, wave: WaveShape) {
+        self.wave_shape = wave;
+    }
+
     /// Shortcut method for getting the amplitude parameter.
     pub fn get_amplitude(&self) -> f32 {
         self.amplitude.get_value()
@@ -109,6 +133,11 @@ impl Oscillator {
     /// Shortcut method for getting the phase parameter.
     pub fn get_phase(&self) -> f32 {
         self.phase.get_value()
+    }
+
+    /// Methods for getting the wave currently selected.
+    pub fn get_wave(&self) -> &WaveShape {
+        &self.wave_shape
     }
 }
 
@@ -128,6 +157,7 @@ pub struct OscillatorBuilder {
     frequency: Option<f32>,
     amplitude: Option<f32>,
     phase: Option<f32>,
+    wave: Option<WaveShape>,
     name: Option<String>,
 }
 
@@ -139,6 +169,7 @@ impl OscillatorBuilder {
             frequency: None,
             amplitude: None,
             phase: None,
+            wave: None,
         }
     }
 
@@ -160,6 +191,11 @@ impl OscillatorBuilder {
         self
     }
 
+    pub fn with_wave(mut self, wave: WaveShape) -> Self {
+        self.wave = Some(wave);
+        self
+    }
+
     pub fn with_name(mut self, name: &str) -> Self {
         self.name = Some(name.to_string());
         self
@@ -170,6 +206,7 @@ impl OscillatorBuilder {
         amplitude: Option<f64>,
         frequency: Option<f64>,
         phase: Option<f64>,
+        wave: Option<WaveShape>,
     ) -> Self {
         let name = match name {
             Some(x) => Some(x.to_string()),
@@ -193,6 +230,7 @@ impl OscillatorBuilder {
             amplitude,
             frequency,
             phase,
+            wave,
         }
     }
 
@@ -214,6 +252,7 @@ impl OscillatorBuilder {
         let frequency = self.frequency.unwrap_or(440.0);
         let amplitude = self.amplitude.unwrap_or(1.0);
         let phase = self.phase.unwrap_or(0.0);
+        let wave = self.wave.unwrap_or_default();
 
         // Value check left for the Parameter factories
 
@@ -236,6 +275,7 @@ impl OscillatorBuilder {
                 .with_default(phase)
                 .build()
                 .expect("Invalid phase value"),
+            wave_shape: wave,
         })
     }
 }

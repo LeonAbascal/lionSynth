@@ -1,11 +1,11 @@
 mod osc;
 mod sum;
 
-pub use crate::bundled_modules::osc::{Oscillator, OscillatorBuilder};
+pub use crate::bundled_modules::osc::{Oscillator, OscillatorBuilder, WaveShape};
 pub use crate::bundled_modules::sum::{Sum2In, Sum2InBuilder, VarSum, VarSumBuilder};
 
 pub mod prelude {
-    pub use crate::bundled_modules::osc::{Oscillator, OscillatorBuilder};
+    pub use crate::bundled_modules::osc::{Oscillator, OscillatorBuilder, WaveShape};
     pub use crate::bundled_modules::sum::{
         Sum2In, Sum2InBuilder, Sum3In, Sum3InBuilder, VarSum, VarSumBuilder,
     };
