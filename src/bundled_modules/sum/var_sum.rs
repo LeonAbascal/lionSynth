@@ -26,7 +26,7 @@ pub struct VarSum {
 }
 
 impl Module for VarSum {
-    fn behaviour(&self, in_data: f32, _time: f32) -> f32 {
+    fn behavior(&self, in_data: f32, _time: f32) -> f32 {
         let mut result = in_data;
 
         for in_value in self.inputs.iter() {

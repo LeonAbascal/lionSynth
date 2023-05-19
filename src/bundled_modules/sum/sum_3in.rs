@@ -36,7 +36,7 @@ impl Sum3In {
 }
 
 impl Module for Sum3In {
-    fn behaviour(&self, in_data: f32, _time: f32) -> f32 {
+    fn behavior(&self, in_data: f32, _time: f32) -> f32 {
         let in_1 = in_data * self.in1_gain.get_value();
         let in_2 = self.get_in2() * self.in2_gain.get_value();
         let in_3 = self.get_in3() * self.in3_gain.get_value();

@@ -48,7 +48,7 @@ pub struct Oscillator {
 }
 
 impl Module for Oscillator {
-    fn behaviour(&self, _in_data: f32, time: f32) -> f32 {
+    fn behavior(&self, _in_data: f32, time: f32) -> f32 {
         ((time * self.get_frequency() * 2.0 * PI) + self.get_phase()).sin() * self.get_amplitude()
     }
 

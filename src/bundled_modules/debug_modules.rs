@@ -10,7 +10,7 @@ pub struct OscDebug {
 
 // IMPLEMENTATIONS
 impl Module for PassTrough {
-    fn behaviour(&self, in_sample: f32, _time: f32) -> f32 {
+    fn behavior(&self, in_sample: f32, _time: f32) -> f32 {
         in_sample // clean data
     }
 
@@ -28,7 +28,7 @@ impl Module for PassTrough {
 }
 
 impl Module for OscDebug {
-    fn behaviour(&self, _: f32, time: f32) -> f32 {
+    fn behavior(&self, _: f32, time: f32) -> f32 {
         let freq: f32 = 440.0;
         (time * freq * 2.0 * PI).sin()
     }

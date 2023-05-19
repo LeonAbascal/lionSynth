@@ -40,7 +40,7 @@ pub fn pop_auxiliaries(
 ///
 /// # How it works
 /// Each module is able to receive and retrieve a buffer of any size. Data (samples) is represented
-/// in a [f32] format, and the module will modify it. For such, it will be calling the [behaviour](fn@Module::behaviour)
+/// in a [f32] format, and the module will modify it. For such, it will be calling the [behaviour](fn@Module::behavior)
 /// method, which is the only one you need to override. I do not recommend overriding the rest
 /// of the methods.
 ///
@@ -59,7 +59,7 @@ pub fn pop_auxiliaries(
 /// TODO: finish doc
 pub trait Module {
     fn get_sample(&self, in_sample: f32, time: f32) -> f32 {
-        self.behaviour(in_sample, time)
+        self.behavior(in_sample, time)
     }
 
     fn get_sample_w_aux(
@@ -69,7 +69,7 @@ pub trait Module {
         auxiliaries: HashMap<String, f32>,
     ) -> f32 {
         self.update_parameters(auxiliaries);
-        self.behaviour(in_sample, time)
+        self.behavior(in_sample, time)
     }
 
     fn update_parameters(&mut self, auxiliaries: HashMap<String, f32>) {
@@ -89,7 +89,7 @@ pub trait Module {
     /// Fills the input buffer with new information. It may generate or modify the buffer.
     ///
     /// It also sets the clock forward and calls every function that needs to be updated on every
-    /// tick, such as the [behavior](fn@Module::behaviour) or the update of the parameters.
+    /// tick, such as the [behavior](fn@Module::behavior) or the update of the parameters.
     /// # Linker and generator modules
     /// A **generator module** does not use the incoming data, precisely because it is generating it.
     /// The input data is thus ignored, but the input buffer should be initialized.
@@ -185,7 +185,7 @@ pub trait Module {
     /// * `in_data`: the sample to modify, if any. Won't use it if creating a generator module.
     /// # Returns
     /// A generated or modified sample.
-    fn behaviour(&self, in_data: f32, time: f32) -> f32;
+    fn behavior(&self, in_data: f32, time: f32) -> f32;
 
     /*/// Adds a parameter to the list of parameters. If the tag is already in the list,
     /// the operation gets rejected.
