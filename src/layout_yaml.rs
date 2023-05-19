@@ -1,6 +1,7 @@
 use crate::back_end::{get_preferred_config, write_data, Channels};
 use crate::bundled_modules::debug::*;
 use crate::bundled_modules::prelude::Sum3InBuilder;
+use crate::bundled_modules::WaveShape;
 use crate::bundled_modules::*;
 use crate::module::{
     AuxDataHolder, AuxInputBuilder, AuxiliaryInput, CoordinatorEntity, GeneratorModuleWrapper,
@@ -12,6 +13,7 @@ use cpal::{Device, SampleFormat, SampleRate, StreamConfig};
 use ringbuf::HeapRb;
 use simplelog::{error, info, warn};
 use std::collections::{HashMap, LinkedList};
+use std::f32::consts::PI;
 use std::fs;
 use std::thread::sleep;
 use std::time::Duration;
@@ -179,9 +181,28 @@ fn load_yaml(
                     let amp = config["amplitude"].as_f64();
                     let freq = config["frequency"].as_f64();
                     let phase = config["phase"].as_f64();
+                    let pwd = config["pwd"].as_f64();
+
+                    let wave = match config["wave"].as_str() {
+                        None => None,
+                        Some(str) => match str {
+                            "sin" | "sine" => Some(WaveShape::Sine),
+                            "tri" | "triangle" => Some(WaveShape::Triangle),
+                            "saw" => Some(WaveShape::Saw),
+                            "sqr" | "square" => Some(WaveShape::Square),
+                            "pulse" => {
+                                let width: f32 = match pwd {
+                                    Some(x) => x as f32,
+                                    None => PI,
+                                };
+                                Some(WaveShape::Pulse(width))
+                            }
+                            &_ => None,
+                        },
+                    };
 
                     Box::new(
-                        OscillatorBuilder::with_all_yaml_fmt(name, amp, freq, phase)
+                        OscillatorBuilder::with_all_yaml_fmt(name, amp, freq, phase, wave, pwd)
                             .build()
                             .unwrap(),
                     )

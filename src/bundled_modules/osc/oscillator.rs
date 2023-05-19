@@ -46,8 +46,10 @@ pub struct Oscillator {
     frequency: Parameter,
     /// The phase of the wave, ie, the point at which the cycle starts.
     phase: Parameter,
-    ///
+    /// The shape of the wave, which will produce a different timbre.
     wave_shape: WaveShape,
+    /// The width of the pulse. Only works with a pulse wave (this is not PWM).
+    pulse_width: Parameter,
     /// Name of the module (debugging)
     name: String,
 }
@@ -158,6 +160,7 @@ pub struct OscillatorBuilder {
     amplitude: Option<f32>,
     phase: Option<f32>,
     wave: Option<WaveShape>,
+    pulse_width: Option<f32>,
     name: Option<String>,
 }
 
@@ -170,6 +173,7 @@ impl OscillatorBuilder {
             amplitude: None,
             phase: None,
             wave: None,
+            pulse_width: None,
         }
     }
 
@@ -196,6 +200,11 @@ impl OscillatorBuilder {
         self
     }
 
+    pub fn with_pulse_width(mut self, pw: f32) -> Self {
+        self.pulse_width = Some(pw);
+        self
+    }
+
     pub fn with_name(mut self, name: &str) -> Self {
         self.name = Some(name.to_string());
         self
@@ -207,6 +216,7 @@ impl OscillatorBuilder {
         frequency: Option<f64>,
         phase: Option<f64>,
         wave: Option<WaveShape>,
+        pw: Option<f64>,
     ) -> Self {
         let name = match name {
             Some(x) => Some(x.to_string()),
@@ -224,6 +234,10 @@ impl OscillatorBuilder {
             Some(x) => Some(x as f32),
             None => None,
         };
+        let pulse_width = match pw {
+            Some(x) => Some(x as f32),
+            None => None,
+        };
 
         Self {
             name,
@@ -231,6 +245,7 @@ impl OscillatorBuilder {
             frequency,
             phase,
             wave,
+            pulse_width,
         }
     }
 
@@ -253,6 +268,7 @@ impl OscillatorBuilder {
         let amplitude = self.amplitude.unwrap_or(1.0);
         let phase = self.phase.unwrap_or(0.0);
         let wave = self.wave.unwrap_or_default();
+        let pulse_width = self.pulse_width.unwrap_or(PI);
 
         // Value check left for the Parameter factories
 
@@ -276,6 +292,13 @@ impl OscillatorBuilder {
                 .build()
                 .expect("Invalid phase value"),
             wave_shape: wave,
+
+            pulse_width: ParameterBuilder::new("pulse width".to_string())
+                .with_max(2.0 * PI)
+                .with_min(0.0)
+                .with_default(pulse_width)
+                .build()
+                .expect("Invalid pulse width"),
         })
     }
 }

@@ -19,3 +19,5 @@ layout:
         name: Carrier
         frequency: 440.0
         amplitude: 0.1
+        wave: pulse
+        pwd: 1
