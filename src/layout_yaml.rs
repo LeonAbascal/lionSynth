@@ -181,7 +181,7 @@ fn load_yaml(
                     let phase = config["phase"].as_f64();
 
                     Box::new(
-                        OscillatorBuilder::with_all_yaml_fmt(name, sample_rate, amp, freq, phase)
+                        OscillatorBuilder::with_all_yaml_fmt(name, amp, freq, phase)
                             .build()
                             .unwrap(),
                     )

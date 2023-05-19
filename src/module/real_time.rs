@@ -203,8 +203,12 @@ impl Clock {
         }
     }
 
-    pub fn get_value(&self) -> f32 {
+    pub fn get_sample_pos(&self) -> f32 {
         self.tick
+    }
+
+    pub fn get_time(&self) -> f32 {
+        self.tick / self.sample_rate
     }
 
     pub fn get_sample_rate(&self) -> f32 {
@@ -213,13 +217,13 @@ impl Clock {
 
     pub fn post_inc(&mut self) -> f32 {
         self.tick = (self.tick + 1.0) % self.sample_rate;
-        self.tick
+        self.tick / self.sample_rate
     }
 
     pub fn inc(&mut self) -> f32 {
         let prev = self.tick;
         self.tick = (self.tick + 1.0) % self.sample_rate;
-        prev
+        prev / self.sample_rate
     }
 }
 
@@ -238,7 +242,7 @@ impl CoordinatorEntity {
 
     pub fn tick(&mut self) {
         self.wrapper_chain.iter_mut().for_each(|module| {
-            module.gen_sample(self.clock.get_value()).unwrap();
+            module.gen_sample(self.clock.get_time()).unwrap();
         });
 
         // POST OPERATIONS

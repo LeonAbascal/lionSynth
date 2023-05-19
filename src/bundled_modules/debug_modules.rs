@@ -30,7 +30,7 @@ impl Module for PassTrough {
 impl Module for OscDebug {
     fn behaviour(&self, _: f32, time: f32) -> f32 {
         let freq: f32 = 440.0;
-        (time * freq * 2.0 * PI / self.sample_rate).sin()
+        (time * freq * 2.0 * PI).sin()
     }
 
     fn get_parameters(&self) -> Option<Vec<&Parameter>> {
@@ -80,7 +80,7 @@ mod test {
             0.12505053,
             0.18696144,
             0.24813786,
-            0.3083394,
+            0.30833942,
             0.3673296,
             0.42487666,
             0.48075455,

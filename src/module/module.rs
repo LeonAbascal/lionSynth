@@ -175,7 +175,7 @@ pub trait Module {
             *sample = self.get_sample(*sample, clock.inc())
         });
 
-        clock.get_value()
+        clock.get_time()
     }
 
     /// Defines the behaviour of the module. Is it going to generate data? Is it going to clip the

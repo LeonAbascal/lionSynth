@@ -37,8 +37,6 @@ use std::f32::consts::PI;
 ///
 /// `t` the time given by a coordinator entity.
 pub struct Oscillator {
-    /// Amount of samples in a second
-    sample_rate: f32,
     /// The maximum amplitude of the wave. Translates to volume (gain). A value greater than one will result in clipping.
     amplitude: Parameter,
     /// The frequency of the wave. Translates to tone.
@@ -51,8 +49,7 @@ pub struct Oscillator {
 
 impl Module for Oscillator {
     fn behaviour(&self, _in_data: f32, time: f32) -> f32 {
-        ((time * self.get_frequency() * 2.0 * PI / self.sample_rate) + self.get_phase()).sin()
-            * self.get_amplitude()
+        ((time * self.get_frequency() * 2.0 * PI) + self.get_phase()).sin() * self.get_amplitude()
     }
 
     fn get_parameters(&self) -> Option<Vec<&Parameter>> {
@@ -128,7 +125,6 @@ impl Oscillator {
 ///     .unwrap();
 /// ```
 pub struct OscillatorBuilder {
-    sample_rate: Option<f32>,
     frequency: Option<f32>,
     amplitude: Option<f32>,
     phase: Option<f32>,
@@ -140,17 +136,10 @@ impl OscillatorBuilder {
     pub fn new() -> Self {
         Self {
             name: None,
-            sample_rate: None,
             frequency: None,
             amplitude: None,
             phase: None,
         }
-    }
-
-    /// Sets the sample rate of the oscillator.
-    pub fn with_sample_rate(mut self, sample_rate: i32) -> Self {
-        self.sample_rate = Some(sample_rate as f32);
-        self
     }
 
     /// Sets the **default** frequency of the *amplitude [parameter](struct@Parameter)*.
@@ -178,17 +167,12 @@ impl OscillatorBuilder {
 
     pub fn with_all_yaml_fmt(
         name: Option<&str>,
-        sample_rate: Option<i64>,
         amplitude: Option<f64>,
         frequency: Option<f64>,
         phase: Option<f64>,
     ) -> Self {
         let name = match name {
             Some(x) => Some(x.to_string()),
-            None => None,
-        };
-        let sample_rate = match sample_rate {
-            Some(x) => Some(x as f32),
             None => None,
         };
         let amplitude = match amplitude {
@@ -206,7 +190,6 @@ impl OscillatorBuilder {
 
         Self {
             name,
-            sample_rate,
             amplitude,
             frequency,
             phase,
@@ -216,7 +199,6 @@ impl OscillatorBuilder {
     /// Tries to generate an Oscillator from the given configuration.
     ///
     /// # Default values:
-    /// * Sample rate: [SAMPLE_RATE](const@SAMPLE_RATE)
     /// * Frequency: 440 Hz
     /// * Amplitude: 1.0
     /// * Phase: 0 radians
@@ -229,7 +211,6 @@ impl OscillatorBuilder {
             None => format!("Oscillator"),
         };
 
-        let sample_rate = self.sample_rate.unwrap_or(SAMPLE_RATE as f32);
         let frequency = self.frequency.unwrap_or(440.0);
         let amplitude = self.amplitude.unwrap_or(1.0);
         let phase = self.phase.unwrap_or(0.0);
@@ -238,7 +219,6 @@ impl OscillatorBuilder {
 
         Ok(Oscillator {
             name,
-            sample_rate,
             amplitude: ParameterBuilder::new("amplitude".to_string())
                 .with_default(amplitude)
                 .build()
@@ -283,8 +263,7 @@ mod oscillator_builder_tests {
 
         let osc = OscillatorBuilder::new().build().unwrap();
 
-        assert_eq!(osc.sample_rate, 44100.0, "Default sample mismatch");
-        assert_eq!(clock.get_value(), 0.0, "Clock mismatch");
+        assert_eq!(clock.get_time(), 0.0, "Clock mismatch");
 
         let amp = (&osc).get_parameter("amplitude");
         let phase = (&osc).get_parameter("phase");
@@ -309,12 +288,10 @@ mod oscillator_builder_tests {
             .with_amplitude(0.5)
             .with_frequency(220.0)
             .with_phase(1.0)
-            .with_sample_rate(22000)
             .build()
             .unwrap();
 
-        assert_eq!(osc.sample_rate, 22000.0, "Sample mismatch");
-        assert_eq!(clock.get_value(), 0.0, "Clock mismatch");
+        assert_eq!(clock.get_time(), 0.0, "Clock mismatch");
 
         let amp = (&osc).get_parameter("amplitude");
         let phase = (&osc).get_parameter("phase");
